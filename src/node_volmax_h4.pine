@@ -1,21 +1,5 @@
 //@version=6
 
-// ══════════════════════════════════════════════════════════════════════════
-//  NODE — Highest volume candle of the day  ·  v0.2
-//  ------------------------------------------------------------------------
-//  Marks, within each day, the H4 candle with the highest volume for the
-//  chart's symbol.
-//
-//  MULTI-TIMEFRAME: the maximum is always computed on the H4 series, no
-//  matter what timeframe the chart is on. Markers are anchored by
-//  timestamp (xloc.bar_time), so on M1/M5/M15 they land on the exact span
-//  of the H4 candle they represent.
-//
-//  NOTE ON THE CURRENT DAY: while the day is still open the maximum is
-//  provisional. If a later H4 candle exceeds the stored volume, the marker
-//  moves to that candle. Closed days never change.
-// ══════════════════════════════════════════════════════════════════════════
-
 indicator("NODE — Highest Volume Candle of the Day (H4)", "NODE VolMax",
      overlay = true, max_labels_count = 500, max_boxes_count = 500)
 
