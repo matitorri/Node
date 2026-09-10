@@ -202,5 +202,5 @@ if barstate.islast
 // ───────────────────────────────  ALERT  ────────────────────────────────
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
-alertcondition(isNewMax, "NODE · New daily volume high",
+alertcondition(isNewMax, "Node · New daily volume high",
      "A new H4 candle is now the highest-volume candle of the day")
