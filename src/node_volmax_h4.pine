@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("NODE — Highest Volume Candle of the Day (H4)", "NODE VolMax",
+indicator("NODE — Highest Volume Candle of the Day (H4) - v0.2.0", "NODE VolMax",
      overlay = true, max_labels_count = 500, max_boxes_count = 500)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
