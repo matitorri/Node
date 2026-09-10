@@ -13,13 +13,13 @@ NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
 
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
 
-markColor    = input.color(color.new(color.orange, 0), "Node color")
-lifetimeDays = input.int(3, "Node lifetime (days)", minval = 1,
-     tooltip = "Counted from the node candle. An untouched node is removed once it expires.")
+markColor    = input.color(color.new(color.orange, 0), "M object color")
+lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1,
+     tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
 excludedInput = input.text_area(
      "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
      "Skipped sessions",
-     tooltip = "Sessions that produce no node, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, no node.")
+     tooltip = "Sessions that produce no M object, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, no M object.")
 warnPrecision = input.bool(true, "Warn when the chart is above M15")
 
 // ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
@@ -56,7 +56,7 @@ h4DailyMax() =>
         mClose := close
     [mTime, mOpen, mHigh, mLow, mClose, mVol, dayNum, lastSessDate]
 
-[nTime, nOpen, nHigh, nLow, nClose, nVol, dayNum, lastSessDate] = request.security(
+[wTime, wOpen, wHigh, wLow, wClose, wVol, dayNum, lastSessDate] = request.security(
      syminfo.tickerid, SRC_TF, h4DailyMax(), lookahead = barmerge.lookahead_off)
 
 // The skip list, parsed once into YYYYMMDD numbers. Separators and any
@@ -71,12 +71,12 @@ if barstate.isfirst
         if not na(num)
             array.push(excludedDates, int(num))
 
-// ──────────────────────────────  NODE  ──────────────────────────────────
-// A node is the price region left by the winning candle. It is built over
-// the trim window, then lives on the chart until price touches it.
+// ────────────────────────────  M OBJECT  ───────────────────────────────
+// An M object is the price region left by the winning H4 candle. It is
+// built over the trim window, then lives on the chart until price touches it.
 
-type Node
-    int   t      = na                   // node candle open time
+type MObject
+    int   t      = na                   // source candle open time
     float top    = na
     float bot    = na
     int   side   = 0                    // +1 bullish candle, -1 bearish
@@ -86,8 +86,8 @@ type Node
     int   expire = na
     box   bx     = na
 
-var array<Node> nodes = array.new<Node>()
-var Node prov = na                      // winner of the session in progress
+var array<MObject> mObjects = array.new<MObject>()
+var MObject prov = na                      // winner of the session in progress
 
 // ─────────────────────  NEW YORK OPEN DETECTION  ────────────────────────
 // The trim window closes on the first bar at or after 09:30 ET.
@@ -105,17 +105,17 @@ if isNyOpenBar
 // ───────────────────────  SESSION WINNER TRACKING  ──────────────────────
 
 isNewSession = dayNum != nz(dayNum[1], 0)
-winnerMoved  = nTime != nTime[1]
+winnerMoved  = wTime != wTime[1]
 
-if not na(nTime)
-    nodeSide = nClose > nOpen ? 1 : nClose < nOpen ? -1 : 0
+if not na(wTime)
+    objSide = wClose > wOpen ? 1 : wClose < wOpen ? -1 : 0
 
     if isNewSession
         // The previous session is closed, so its winner is final. Only now
-        // does the node get drawn: while the session is running the winner
-        // can still change hands, and the region cannot be used yet.
+        // does the M object get drawn: while the session is running the
+        // winner can still change hands, and the region cannot be used yet.
         // Holiday half sessions still open a daily bar, so they would produce
-        // a node on a fraction of the usual volume. They are skipped by date.
+        // an M object on a fraction of the usual volume. Skipped by date.
         sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
 
         if not na(prov)
@@ -125,68 +125,68 @@ if not na(nTime)
                      xloc         = xloc.bar_time,
                      border_color = markColor,
                      bgcolor      = color.new(markColor, 85))
-                array.push(nodes, prov)
-        prov := Node.new(t = nTime, top = nHigh, bot = nLow, side = nodeSide)
+                array.push(mObjects, prov)
+        prov := MObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
 
     else if winnerMoved and not na(prov)
-        // A later candle took over: move the node and restart its window.
-        prov.t    := nTime
-        prov.top  := nHigh
-        prov.bot  := nLow
-        prov.side := nodeSide
+        // A later candle took over: move the M object and restart its window.
+        prov.t    := wTime
+        prov.top  := wHigh
+        prov.bot  := wLow
+        prov.side := objSide
         prov.wMin := na
         prov.wMax := na
 
-// The window opens at the close of the node candle, which happens well
+// The window opens at the close of the source candle, which happens well
 // before the session ends, so it is measured while the winner is still
-// provisional and carried over when the node is finalised. Nothing is drawn
-// during this stage.
+// provisional and carried over when the M object is created. Nothing is
+// drawn during this stage.
 if not na(prov)
     if time >= prov.t + TF_MS
         prov.wMin := na(prov.wMin) ? low : math.min(prov.wMin, low)
         prov.wMax := na(prov.wMax) ? high : math.max(prov.wMax, high)
 
-// ────────────────────────────  NODE LIFECYCLE  ──────────────────────────
+// ─────────────────────────  M OBJECT LIFECYCLE  ─────────────────────────
 
-if array.size(nodes) > 0
-    for i = array.size(nodes) - 1 to 0
-        nd = array.get(nodes, i)
+if array.size(mObjects) > 0
+    for i = array.size(mObjects) - 1 to 0
+        obj = array.get(mObjects, i)
         bool drop = false
 
-        if not nd.active
+        if not obj.active
             if isNyOpenBar
-                // Window closed. What survives is the part of the node the
+                // Window closed. What survives is the part of the M object
                 // price never visited, on the side the candle came from.
-                float newTop = nd.side > 0 ? math.min(nd.top, nz(nd.wMin, nd.top)) : nd.top
-                float newBot = nd.side < 0 ? math.max(nd.bot, nz(nd.wMax, nd.bot)) : nd.bot
+                float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
+                float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
                 if newTop <= newBot
                     // Fully absorbed.
-                    box.delete(nd.bx)
+                    box.delete(obj.bx)
                     drop := true
                 else
-                    nd.top    := newTop
-                    nd.bot    := newBot
-                    nd.active := true
-                    box.set_lefttop(nd.bx, nd.t, newTop)
-                    box.set_rightbottom(nd.bx, time, newBot)
+                    obj.top    := newTop
+                    obj.bot    := newBot
+                    obj.active := true
+                    box.set_lefttop(obj.bx, obj.t, newTop)
+                    box.set_rightbottom(obj.bx, time, newBot)
             else
-                nd.wMin := na(nd.wMin) ? low : math.min(nd.wMin, low)
-                nd.wMax := na(nd.wMax) ? high : math.max(nd.wMax, high)
-                box.set_right(nd.bx, time)
+                obj.wMin := na(obj.wMin) ? low : math.min(obj.wMin, low)
+                obj.wMax := na(obj.wMax) ? high : math.max(obj.wMax, high)
+                box.set_right(obj.bx, time)
 
-        if not drop and nd.active
-            if high >= nd.bot and low <= nd.top
+        if not drop and obj.active
+            if high >= obj.bot and low <= obj.top
                 // Touched: freeze the box where it happened and stop tracking.
-                box.set_right(nd.bx, time)
+                box.set_right(obj.bx, time)
                 drop := true
-            else if time >= nd.expire
-                box.delete(nd.bx)
+            else if time >= obj.expire
+                box.delete(obj.bx)
                 drop := true
             else
-                box.set_right(nd.bx, time)
+                box.set_right(obj.bx, time)
 
         if drop
-            array.remove(nodes, i)
+            array.remove(mObjects, i)
 
 // ──────────────────────────────  WARNINGS  ──────────────────────────────
 
@@ -195,13 +195,13 @@ if barstate.islast
         label.new(bar_index, high, "Chart is above M15 (" + timeframe.period + ")\nThe 09:30 ET cut-off is approximated to the bar",
              style = label.style_label_down, color = color.new(color.red, 10),
              textcolor = color.white, size = size.small)
-    if na(nVol)
+    if na(wVol)
         label.new(bar_index, high, "This symbol does not report volume on H4",
              style = label.style_label_down, color = color.new(color.red, 10),
              textcolor = color.white, size = size.small)
 
 // ───────────────────────────────  ALERT  ────────────────────────────────
 
-isNewMax = not na(nTime) and not na(nTime[1]) and nTime != nTime[1] and dayNum == nz(dayNum[1], 0)
+isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
 alertcondition(isNewMax, "NODE · New daily volume high",
      "A new H4 candle is now the highest-volume candle of the day")
