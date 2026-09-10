@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("NODE — Highest Volume Candle of the Day (H4) - v0.4.0", "NODE VolMax",
+indicator("NODE — Highest Volume Candle of the Day (H4) - v0.5.0", "NODE VolMax",
      overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
@@ -16,6 +16,9 @@ NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
 markColor    = input.color(color.new(color.orange, 0), "Node color")
 lifetimeDays = input.int(3, "Node lifetime (days)", minval = 1,
      tooltip = "Counted from the node candle. An untouched node is removed once it expires.")
+minSessVolPct = input.float(50, "Minimum session volume (% of median)", minval = 0, maxval = 100, step = 5,
+     tooltip = "Sessions trading less than this share of the recent median are skipped, which drops half sessions around holidays. Set to 0 to keep every session.")
+volLookback = input.int(20, "Sessions for the volume median", minval = 2)
 warnPrecision = input.bool(true, "Warn when the chart is above M15")
 
 // ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
@@ -32,25 +35,36 @@ h4DailyMax() =>
     var int   dayNum = 0                // increments once per session, used
                                         // by the chart side to know when a
                                         // session's winner is final
+    var float sessVol     = 0.0         // volume traded so far this session
+    var float lastSessVol = na          // total of the session that just ended
     if timeframe.change("D") or na(mVol)
-        dayNum += 1
+        dayNum      += 1
+        lastSessVol := sessVol
+        sessVol     := nz(volume)
         mVol   := volume
         mTime  := time
         mOpen  := open
         mHigh  := high
         mLow   := low
         mClose := close
-    else if volume > mVol
-        mVol   := volume
-        mTime  := time
-        mOpen  := open
-        mHigh  := high
-        mLow   := low
-        mClose := close
-    [mTime, mOpen, mHigh, mLow, mClose, mVol, dayNum]
+    else
+        sessVol += nz(volume)
+        if volume > mVol
+            mVol   := volume
+            mTime  := time
+            mOpen  := open
+            mHigh  := high
+            mLow   := low
+            mClose := close
+    [mTime, mOpen, mHigh, mLow, mClose, mVol, dayNum, lastSessVol]
 
-[nTime, nOpen, nHigh, nLow, nClose, nVol, dayNum] = request.security(
+[nTime, nOpen, nHigh, nLow, nClose, nVol, dayNum, lastSessVol] = request.security(
      syminfo.tickerid, SRC_TF, h4DailyMax(), lookahead = barmerge.lookahead_off)
+
+// Reference level for the session filter: the median volume of the sessions
+// before the one that just closed, so a half session cannot lower its own bar.
+sessVolRef = request.security(syminfo.tickerid, "D", ta.median(volume, volLookback)[1],
+     lookahead = barmerge.lookahead_off)
 
 // ──────────────────────────────  NODE  ──────────────────────────────────
 // A node is the price region left by the winning candle. It is built over
@@ -95,8 +109,13 @@ if not na(nTime)
         // The previous session is closed, so its winner is final. Only now
         // does the node get drawn: while the session is running the winner
         // can still change hands, and the region cannot be used yet.
+        // A session that barely traded — a holiday half session — produces a
+        // node that is not comparable to a normal one, so it is skipped.
+        volFloor  = na(sessVolRef) ? na : sessVolRef * minSessVolPct / 100.0
+        sessionOk = minSessVolPct <= 0 or na(volFloor) or na(lastSessVol) or lastSessVol >= volFloor
+
         if not na(prov)
-            if prov.side != 0
+            if prov.side != 0 and sessionOk
                 prov.expire := prov.t + lifetimeDays * MS_DAY
                 prov.bx := box.new(prov.t, prov.top, time, prov.bot,
                      xloc         = xloc.bar_time,
