@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("NODE — Highest Volume Candle of the Day (H4) - v0.5.0", "NODE VolMax",
+indicator("NODE — Highest Volume Candle of the Day (H4) - v0.6.0", "NODE VolMax",
      overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
@@ -16,9 +16,10 @@ NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
 markColor    = input.color(color.new(color.orange, 0), "Node color")
 lifetimeDays = input.int(3, "Node lifetime (days)", minval = 1,
      tooltip = "Counted from the node candle. An untouched node is removed once it expires.")
-minSessVolPct = input.float(50, "Minimum session volume (% of median)", minval = 0, maxval = 100, step = 5,
-     tooltip = "Sessions trading less than this share of the recent median are skipped, which drops half sessions around holidays. Set to 0 to keep every session.")
-volLookback = input.int(20, "Sessions for the volume median", minval = 2)
+excludedInput = input.text_area(
+     "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
+     "Skipped sessions",
+     tooltip = "Sessions that produce no node, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, no node.")
 warnPrecision = input.bool(true, "Warn when the chart is above M15")
 
 // ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
@@ -35,36 +36,40 @@ h4DailyMax() =>
     var int   dayNum = 0                // increments once per session, used
                                         // by the chart side to know when a
                                         // session's winner is final
-    var float sessVol     = 0.0         // volume traded so far this session
-    var float lastSessVol = na          // total of the session that just ended
+    var int lastSessDate = na           // closing day of the session that
+                                        // just ended, as YYYYMMDD
     if timeframe.change("D") or na(mVol)
-        dayNum      += 1
-        lastSessVol := sessVol
-        sessVol     := nz(volume)
+        dayNum += 1
+        lastSessDate := na(time[1]) ? na : year(time[1], NY_TZ) * 10000 + month(time[1], NY_TZ) * 100 + dayofmonth(time[1], NY_TZ)
         mVol   := volume
         mTime  := time
         mOpen  := open
         mHigh  := high
         mLow   := low
         mClose := close
-    else
-        sessVol += nz(volume)
-        if volume > mVol
-            mVol   := volume
-            mTime  := time
-            mOpen  := open
-            mHigh  := high
-            mLow   := low
-            mClose := close
-    [mTime, mOpen, mHigh, mLow, mClose, mVol, dayNum, lastSessVol]
+    else if volume > mVol
+        mVol   := volume
+        mTime  := time
+        mOpen  := open
+        mHigh  := high
+        mLow   := low
+        mClose := close
+    [mTime, mOpen, mHigh, mLow, mClose, mVol, dayNum, lastSessDate]
 
-[nTime, nOpen, nHigh, nLow, nClose, nVol, dayNum, lastSessVol] = request.security(
+[nTime, nOpen, nHigh, nLow, nClose, nVol, dayNum, lastSessDate] = request.security(
      syminfo.tickerid, SRC_TF, h4DailyMax(), lookahead = barmerge.lookahead_off)
 
-// Reference level for the session filter: the median volume of the sessions
-// before the one that just closed, so a half session cannot lower its own bar.
-sessVolRef = request.security(syminfo.tickerid, "D", ta.median(volume, volLookback)[1],
-     lookahead = barmerge.lookahead_off)
+// The skip list, parsed once into YYYYMMDD numbers. Separators and any
+// punctuation in the dates are stripped, so 2025-11-28 and 20251128 both work.
+var array<int> excludedDates = array.new<int>()
+if barstate.isfirst
+    parts = str.split(str.replace_all(excludedInput, "\n", ","), ",")
+    for i = 0 to array.size(parts) - 1
+        raw   = array.get(parts, i)
+        clean = str.replace_all(str.replace_all(str.replace_all(raw, "-", ""), "/", ""), " ", "")
+        num   = str.tonumber(clean)
+        if not na(num)
+            array.push(excludedDates, int(num))
 
 // ──────────────────────────────  NODE  ──────────────────────────────────
 // A node is the price region left by the winning candle. It is built over
@@ -109,10 +114,9 @@ if not na(nTime)
         // The previous session is closed, so its winner is final. Only now
         // does the node get drawn: while the session is running the winner
         // can still change hands, and the region cannot be used yet.
-        // A session that barely traded — a holiday half session — produces a
-        // node that is not comparable to a normal one, so it is skipped.
-        volFloor  = na(sessVolRef) ? na : sessVolRef * minSessVolPct / 100.0
-        sessionOk = minSessVolPct <= 0 or na(volFloor) or na(lastSessVol) or lastSessVol >= volFloor
+        // Holiday half sessions still open a daily bar, so they would produce
+        // a node on a fraction of the usual volume. They are skipped by date.
+        sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
 
         if not na(prov)
             if prov.side != 0 and sessionOk
