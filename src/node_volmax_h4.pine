@@ -1,11 +1,13 @@
 //@version=6
 
-indicator("Node - v0.6.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.7.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
 
-SRC_TF       = "240"                    // source timeframe: H4
+SRC_TF       = "240"                    // M object source timeframe: H4
 TF_MS        = 4 * 60 * 60 * 1000       // length of one H4 candle, in ms
+ID_TF        = "60"                     // ID object source timeframe: H1
+ID_TF_MIN    = 60                       // length of one H1 candle, in minutes
 MS_DAY       = 24 * 60 * 60 * 1000
 NY_TZ        = "America/New_York"
 NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
@@ -13,6 +15,7 @@ NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
 
 markColor    = input.color(color.new(color.orange, 0), "M object color")
+idColor      = input.color(color.new(color.blue, 0), "ID object color")
 lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1,
      tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
 excludedInput = input.text_area(
@@ -70,6 +73,58 @@ if barstate.isfirst
         if not na(num)
             array.push(excludedDates, int(num))
 
+// ──────────  PRE-NEW-YORK CANDIDATES (runs on the H1 series)  ──────────
+// Highest-volume H1 candle of the window that runs from the session open to
+// the New York open, tracked separately per side. The side filter lives on
+// the chart, which knows the M object, so both candidates are returned and
+// the caller keeps the one it needs.
+
+h1PreNyWinners() =>
+    var float upVol  = na
+    var int   upTime = na
+    var float upHigh = na
+    var float upLow  = na
+    var float dnVol  = na
+    var int   dnTime = na
+    var float dnHigh = na
+    var float dnLow  = na
+    var bool  inWin  = false
+
+    if timeframe.change("D")
+        inWin  := true
+        upVol  := na
+        upTime := na
+        upHigh := na
+        upLow  := na
+        dnVol  := na
+        dnTime := na
+        dnHigh := na
+        dnLow  := na
+
+    nyMin = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
+    // The window closes on the first candle that would run past 09:30 ET.
+    // Evening candles sit above 12:00 ET, so they cannot close it early.
+    if inWin and nyMin < 720 and nyMin + ID_TF_MIN > NY_OPEN_MIN
+        inWin := false
+
+    if inWin
+        if close > open
+            if na(upVol) or volume > upVol
+                upVol  := volume
+                upTime := time
+                upHigh := high
+                upLow  := low
+        else if close < open
+            if na(dnVol) or volume > dnVol
+                dnVol  := volume
+                dnTime := time
+                dnHigh := high
+                dnLow  := low
+    [upTime, upHigh, upLow, upVol, dnTime, dnHigh, dnLow, dnVol]
+
+[upTime, upHigh, upLow, upVol, dnTime, dnHigh, dnLow, dnVol] = request.security(
+     syminfo.tickerid, ID_TF, h1PreNyWinners(), lookahead = barmerge.lookahead_off)
+
 // ────────────────────────────  M OBJECT  ───────────────────────────────
 // An M object is the price region left by the winning H4 candle. It is
 // built over the trim window, then lives on the chart until price touches it.
@@ -86,7 +141,10 @@ type MObject
     box   bx     = na
 
 var array<MObject> mObjects = array.new<MObject>()
-var MObject prov = na                      // winner of the session in progress
+var MObject prov = na                   // winner of the session in progress
+var int lastMSide = 0                   // side of the M object born from the
+                                        // session that just closed, 0 if none
+var box idBox = na                      // ID object of the session in progress
 
 // ─────────────────────  NEW YORK OPEN DETECTION  ────────────────────────
 // The trim window closes on the first bar at or after 09:30 ET.
@@ -117,7 +175,13 @@ if not na(wTime)
         // an M object on a fraction of the usual volume. Skipped by date.
         sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
 
+        // The ID object belongs to the session that just ended.
+        if not na(idBox)
+            box.delete(idBox)
+            idBox := na
+
         if not na(prov)
+            lastMSide := 0
             if prov.side != 0 and sessionOk
                 prov.expire := prov.t + lifetimeDays * MS_DAY
                 prov.bx := box.new(prov.t, prov.top, time, prov.bot,
@@ -125,6 +189,7 @@ if not na(wTime)
                      border_color = markColor,
                      bgcolor      = color.new(markColor, 85))
                 array.push(mObjects, prov)
+                lastMSide := prov.side
         prov := MObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
 
     else if winnerMoved and not na(prov)
@@ -186,6 +251,33 @@ if array.size(mObjects) > 0
 
         if drop
             array.remove(mObjects, i)
+
+// ───────────────────────  ID OBJECT LIFECYCLE  ─────────────────────────
+// Born at the New York open from the pre-NY candidate whose side is the
+// opposite of the M object left by D-1. No trim, and it dies with its
+// session. No M object from D-1 means no side to oppose, so no ID object.
+
+if isNyOpenBar
+    reqSide = -lastMSide
+    int   idT   = na
+    float idTop = na
+    float idBot = na
+    if reqSide > 0 and not na(upVol)
+        idT   := upTime
+        idTop := upHigh
+        idBot := upLow
+    else if reqSide < 0 and not na(dnVol)
+        idT   := dnTime
+        idTop := dnHigh
+        idBot := dnLow
+    if not na(idT)
+        idBox := box.new(idT, idTop, time, idBot,
+             xloc         = xloc.bar_time,
+             border_color = idColor,
+             bgcolor      = color.new(idColor, 85))
+
+if not na(idBox)
+    box.set_right(idBox, time)
 
 // ──────────────────────────────  WARNINGS  ──────────────────────────────
 
