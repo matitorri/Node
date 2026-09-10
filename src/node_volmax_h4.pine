@@ -1,77 +1,114 @@
 //@version=6
 
 // ══════════════════════════════════════════════════════════════════════════
-//  NODE — Highest volume candle of the day  ·  v0.1
+//  NODE — Highest volume candle of the day  ·  v0.2
 //  ------------------------------------------------------------------------
 //  Marks, within each day, the H4 candle with the highest volume for the
 //  chart's symbol.
 //
+//  MULTI-TIMEFRAME: the maximum is always computed on the H4 series, no
+//  matter what timeframe the chart is on. Markers are anchored by
+//  timestamp (xloc.bar_time), so on M1/M5/M15 they land on the exact span
+//  of the H4 candle they represent.
+//
 //  NOTE ON THE CURRENT DAY: while the day is still open the maximum is
-//  provisional. If a later candle exceeds the stored volume, the marker
+//  provisional. If a later H4 candle exceeds the stored volume, the marker
 //  moves to that candle. Closed days never change.
 // ══════════════════════════════════════════════════════════════════════════
 
 indicator("NODE — Highest Volume Candle of the Day (H4)", "NODE VolMax",
-     overlay = true, max_labels_count = 500, max_lines_count = 500)
+     overlay = true, max_labels_count = 500, max_boxes_count = 500)
+
+// ─────────────────────────────  CONSTANTS  ──────────────────────────────
+
+SRC_TF = "240"                          // source timeframe: H4
+TF_MS  = 4 * 60 * 60 * 1000             // length of one H4 candle, in ms
 
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
 
-markColor    = input.color(color.new(color.orange, 0), "Marker color")
-showRange    = input.bool(true, "Highlight the candle range")
-showVolValue = input.bool(true, "Show volume value on the label")
-warnWrongTf  = input.bool(true, "Warn if the chart is not on H4")
+markColor     = input.color(color.new(color.orange, 0), "Marker color")
+showRange     = input.bool(true, "Highlight the H4 candle range")
+showVolValue  = input.bool(true, "Show volume value on the label")
+warnHigherTf  = input.bool(true, "Warn if the chart is above H4")
 
-// ────────────────────────  MAXIMUM DETECTION  ───────────────────────────
+// ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
+// Keeps its own state on H4 bars, so the result is identical whether the
+// chart is on M1 or on H4.
 
-isNewDay = timeframe.change("D")        // first H4 candle of each day
-hasVol   = not na(volume)
+h4DailyMax() =>
+    var float maxVol  = na
+    var int   maxTime = na
+    var float maxHigh = na
+    var float maxLow  = na
+    var int   dayNum  = 0               // increments once per day, used by
+                                        // the chart side to know when to
+                                        // start a new marker
+    if timeframe.change("D") or na(maxVol)
+        dayNum  += 1
+        maxVol  := volume
+        maxTime := time
+        maxHigh := high
+        maxLow  := low
+    else if volume > maxVol
+        maxVol  := volume
+        maxTime := time
+        maxHigh := high
+        maxLow  := low
+    [maxTime, maxHigh, maxLow, maxVol, dayNum]
 
-var float dayMaxVol = na                // highest volume of the current day
-var label dayLabel  = na                // label for the current day
-var line  dayLine   = na                // range highlight for the current day
+[maxTime, maxHigh, maxLow, maxVol, dayNum] = request.security(
+     syminfo.tickerid, SRC_TF, h4DailyMax(), lookahead = barmerge.lookahead_off)
 
-// Label text
-labelText() =>
-    showVolValue ? "MAX VOL\n" + str.tostring(volume, format.volume) : "MAX VOL"
+// ──────────────────────────────  DRAWING  ───────────────────────────────
+
+hasVol = not na(maxVol) and not na(maxTime)
+
+var label dayLabel = na
+var box   dayBox   = na
+
+labelText(v) =>
+    showVolValue ? "MAX VOL\n" + str.tostring(v, format.volume) : "MAX VOL"
 
 if hasVol
-    // Create fresh markers when a new day opens, or if they do not exist
-    // yet (first candle of the history).
+    isNewDay = na(dayNum[1]) or dayNum != dayNum[1]
+
     if isNewDay or na(dayLabel)
-        dayMaxVol := volume
-        dayLabel  := label.new(bar_index, high, labelText(),
+        // New day: fresh markers, so the previous day's stay frozen.
+        dayLabel := label.new(maxTime, maxHigh, labelText(maxVol),
+             xloc      = xloc.bar_time,
              style     = label.style_label_down,
              color     = color.new(markColor, 15),
              textcolor = color.white,
              size      = size.small)
         if showRange
-            dayLine := line.new(bar_index, low, bar_index, high,
-                 color = markColor, width = 3)
-
-    else if na(dayMaxVol) or volume > dayMaxVol
-        // New maximum within the same day: move the markers.
-        dayMaxVol := volume
-        label.set_xy(dayLabel, bar_index, high)
-        label.set_text(dayLabel, labelText())
-        if not na(dayLine)
-            line.set_xy1(dayLine, bar_index, low)
-            line.set_xy2(dayLine, bar_index, high)
+            dayBox := box.new(maxTime, maxHigh, maxTime + TF_MS, maxLow,
+                 xloc         = xloc.bar_time,
+                 border_color = markColor,
+                 bgcolor      = color.new(markColor, 85))
+    else
+        // Same day: the winning candle may have changed, or the current
+        // one may still be growing. Either way, refresh position and text.
+        label.set_xy(dayLabel, maxTime, maxHigh)
+        label.set_text(dayLabel, labelText(maxVol))
+        if not na(dayBox)
+            box.set_lefttop(dayBox, maxTime, maxHigh)
+            box.set_rightbottom(dayBox, maxTime + TF_MS, maxLow)
 
 // ──────────────────────────────  WARNINGS  ──────────────────────────────
 
 if barstate.islast
-    if warnWrongTf and timeframe.period != "240"
-        label.new(bar_index, high, "This indicator is meant for H4\n(current chart: " + timeframe.period + ")",
+    if warnHigherTf and timeframe.in_seconds() > timeframe.in_seconds(SRC_TF)
+        label.new(bar_index, high, "Chart is above H4 (" + timeframe.period + ")\nThe H4 marker cannot be placed precisely",
              style = label.style_label_down, color = color.new(color.red, 10),
              textcolor = color.white, size = size.small)
     if not hasVol
-        label.new(bar_index, high, "This symbol does not report volume",
+        label.new(bar_index, high, "This symbol does not report volume on H4",
              style = label.style_label_down, color = color.new(color.red, 10),
              textcolor = color.white, size = size.small)
 
 // ───────────────────────────────  ALERT  ────────────────────────────────
-// Fires when the candle that just closed is the new maximum of the day.
+// Fires when a different H4 candle takes over as the maximum of the day.
 
-isNewMax = hasVol and not isNewDay and volume > nz(dayMaxVol[1], 0)
+isNewMax = hasVol and not na(maxTime[1]) and maxTime != maxTime[1] and dayNum == dayNum[1]
 alertcondition(isNewMax, "NODE · New daily volume high",
-     "New highest-volume candle of the day")
+     "A new H4 candle is now the highest-volume candle of the day")
