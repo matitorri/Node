@@ -17,7 +17,7 @@ KINDS = ("indicator", "strategy")
 
 def build(kind: str) -> Path:
     parts = [SRC / f"{kind}.head.pine", SRC / "model.pine", SRC / f"{kind}.tail.pine"]
-    body = "\n".join(p.read_text().strip("\n") for p in parts) + "\n"
+    body = "\n\n".join(p.read_text().strip("\n") for p in parts) + "\n"
     out = DIST / f"node_{kind}.pine"
     out.write_text(body)
     return out
