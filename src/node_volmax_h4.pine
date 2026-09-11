@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.8.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.9.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
 
@@ -73,23 +73,32 @@ if barstate.isfirst
         if not na(num)
             array.push(excludedDates, int(num))
 
-// ──────────  PRE-NEW-YORK MAXIMUM (runs on the H1 series)  ─────────────
-// Highest-volume H1 candle of the window that runs from the session open to
-// the New York open, whatever its side.
+// ──────────  PRE-NEW-YORK SURVIVOR (runs on the H1 series)  ────────────
+// Every H1 candle of the window that runs from the session open to the New
+// York open is kept, along with the price extremes reached after it closed.
+// A candle whose range price later covered end to end is absorbed and drops
+// out. The winner is the highest-volume candle still standing, so being
+// swept hands the place over to the next one down.
 
-h1PreNyMax() =>
-    var float bVol  = na
-    var int   bTime = na
-    var float bHigh = na
-    var float bLow  = na
-    var bool  inWin = false
+h1PreNySurvivor() =>
+    var array<int>   cTime = array.new<int>()
+    var array<float> cHigh = array.new<float>()
+    var array<float> cLow  = array.new<float>()
+    var array<float> cVol  = array.new<float>()
+    var array<bool>  cGone = array.new<bool>()
+    var array<float> cMin  = array.new<float>()   // extremes seen after the
+    var array<float> cMax  = array.new<float>()   // candle closed
+    var bool inWin = false
 
     if timeframe.change("D")
         inWin := true
-        bVol  := na
-        bTime := na
-        bHigh := na
-        bLow  := na
+        array.clear(cTime)
+        array.clear(cHigh)
+        array.clear(cLow)
+        array.clear(cVol)
+        array.clear(cGone)
+        array.clear(cMin)
+        array.clear(cMax)
 
     nyMin = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
     // The window closes on the first candle that would run past 09:30 ET.
@@ -97,15 +106,44 @@ h1PreNyMax() =>
     if inWin and nyMin < 720 and nyMin + ID_TF_MIN > NY_OPEN_MIN
         inWin := false
 
-    if inWin and (na(bVol) or volume > bVol)
-        bVol  := volume
-        bTime := time
-        bHigh := high
-        bLow  := low
+    if inWin
+        // Age the candles already stored before adding this one, so a candle
+        // is never measured against its own range.
+        if array.size(cTime) > 0
+            for i = 0 to array.size(cTime) - 1
+                if not array.get(cGone, i)
+                    lo = na(array.get(cMin, i)) ? low  : math.min(array.get(cMin, i), low)
+                    hi = na(array.get(cMax, i)) ? high : math.max(array.get(cMax, i), high)
+                    array.set(cMin, i, lo)
+                    array.set(cMax, i, hi)
+                    if lo <= array.get(cLow, i) and hi >= array.get(cHigh, i)
+                        array.set(cGone, i, true)
+        array.push(cTime, time)
+        array.push(cHigh, high)
+        array.push(cLow,  low)
+        array.push(cVol,  volume)
+        array.push(cGone, false)
+        array.push(cMin,  na)
+        array.push(cMax,  na)
+
+    // Highest volume among the candles still standing.
+    int   bTime = na
+    float bHigh = na
+    float bLow  = na
+    float bVol  = na
+    if array.size(cTime) > 0
+        for i = 0 to array.size(cTime) - 1
+            if not array.get(cGone, i)
+                v = array.get(cVol, i)
+                if na(bVol) or v > bVol
+                    bVol  := v
+                    bTime := array.get(cTime, i)
+                    bHigh := array.get(cHigh, i)
+                    bLow  := array.get(cLow, i)
     [bTime, bHigh, bLow, bVol]
 
 [idSrcTime, idSrcHigh, idSrcLow, idSrcVol] = request.security(
-     syminfo.tickerid, ID_TF, h1PreNyMax(), lookahead = barmerge.lookahead_off)
+     syminfo.tickerid, ID_TF, h1PreNySurvivor(), lookahead = barmerge.lookahead_off)
 
 // ────────────────────────────  M OBJECT  ───────────────────────────────
 // An M object is the price region left by the winning H4 candle. It is
@@ -238,7 +276,7 @@ if array.size(mObjects) > 0
 
 // ───────────────────────  ID OBJECT LIFECYCLE  ─────────────────────────
 // Born at the New York open from the highest-volume H1 candle of the pre-NY
-// window. No trim, and it dies with its session.
+// window that price did not absorb. No trim, and it dies with its session.
 
 if isNyOpenBar and not na(idSrcTime)
     idTop     := idSrcHigh
