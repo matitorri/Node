@@ -1,0 +1,103 @@
+// ══════════════════════════  MARKET STRUCTURE  ══════════════════════════
+// The second model, a peer of the V objects and unaware of them. It holds
+// the two levels that define the structure and the direction they imply,
+// read on M1 whatever the chart is on.
+//
+// There are no pivots and no lookback. The levels fall out of the
+// alternation itself: in an uptrend, the last high the structure made and
+// the floor of the pullback that produced it. Taking the high out confirms
+// a new one and recomputes both. Taking the low out is a change of
+// character, and the structure turns.
+//
+// Read through request.security rather than by splitting chart bars, which
+// keeps the whole history: intrabar requests are capped, a state machine
+// running on the M1 series is not.
+
+STRUCT_TF = "1"
+
+G_STRUCT = "Market Structure"
+
+enableStruct  = input.bool(true, "Enable market structure", group = G_STRUCT,
+     tooltip = "Off publishes nothing: no levels, no direction, no change of character for anything downstream to read.")
+structUpColor = input.color(color.new(color.teal, 0),   "Bullish structure", group = G_STRUCT)
+structDnColor = input.color(color.new(color.maroon, 0), "Bearish structure", group = G_STRUCT)
+
+// ───────────────────────────  THE MACHINE  ──────────────────────────────
+
+marketStructure() =>
+    var int   dir     = 0               // +1 up, -1 down, 0 until the first break
+    var float hi      = na              // upper level of the structure
+    var float lo      = na              // lower level
+    var float pullH   = na              // extremes reached since those were set
+    var float pullL   = na
+    var int   flips   = 0               // changes of character so far
+    var int   flipDir = 0               // the direction the last one turned to
+    var int   flipT   = na              // and when it happened
+
+    if na(hi)
+        hi    := high
+        lo    := low
+        pullH := high
+        pullL := low
+
+    if dir == 0
+        // Undecided until price leaves the range it started in.
+        if high > hi
+            dir   := 1
+            lo    := pullL
+            hi    := high
+            pullL := low
+        else if low < lo
+            dir   := -1
+            hi    := pullH
+            lo    := low
+            pullH := high
+        else
+            pullH := math.max(pullH, high)
+            pullL := math.min(pullL, low)
+
+    else if dir == 1
+        // Continuation is settled first. On a bar that does both, the new
+        // high is taken and the broken low is left for a later bar to
+        // report — within one M1 candle there is no way to know the order.
+        if high > hi
+            lo    := pullL
+            hi    := high
+            pullL := low
+        else if low < lo
+            // The high that failed stays put and becomes the lower high.
+            dir     := -1
+            lo      := low
+            pullH   := high
+            flips   += 1
+            flipDir := -1
+            flipT   := time
+        else
+            pullL := math.min(pullL, low)
+
+    else
+        if low < lo
+            hi    := pullH
+            lo    := low
+            pullH := high
+        else if high > hi
+            // The low that held stays put and becomes the higher low.
+            dir     := 1
+            hi      := high
+            pullL   := low
+            flips   += 1
+            flipDir := 1
+            flipT   := time
+        else
+            pullH := math.max(pullH, high)
+
+    [dir, hi, lo, flips, flipDir, flipT]
+
+[structDir, structHi, structLo, structFlips, structFlipDir, structFlipT] =
+     request.security(syminfo.tickerid, STRUCT_TF, marketStructure(),
+     lookahead = barmerge.lookahead_off)
+
+// What the rest of the script reads. Disabled, the model publishes nothing.
+structOn    = enableStruct and structDir != 0
+structChoch = structOn and structFlips != nz(structFlips[1], 0)
+structColor = structDir > 0 ? structUpColor : structDnColor

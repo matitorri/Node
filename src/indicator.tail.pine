@@ -1,5 +1,20 @@
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
 
+// ──────────────────────  MARKET STRUCTURE  ──────────────────────────────
+// The two levels, held flat until the structure moves them, and a diamond
+// where it turned.
+
+plot(structOn ? structHi : na, "Structure high", color = structColor,
+     style = plot.style_stepline, linewidth = 1)
+plot(structOn ? structLo : na, "Structure low",  color = structColor,
+     style = plot.style_stepline, linewidth = 1)
+
+plotshape(structChoch, "Change of character", shape.diamond,
+     structFlipDir > 0 ? location.belowbar : location.abovebar,
+     color = structFlipDir > 0 ? structUpColor : structDnColor, size = size.tiny)
+
+// ─────────────────────────────  WARNINGS  ───────────────────────────────
+
 if barstate.islast
     if warnGrid and not coarse and 300 % timeframe.in_seconds() != 0
         label.new(bar_index, high, "Chart timeframe (" + timeframe.period + ") does not divide the 5-minute grid\nSlices will not line up with other timeframes",
@@ -16,7 +31,7 @@ if barstate.islast
 stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
 sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
 
-var table diag = table.new(position.top_right, 2, 11, border_width = 1,
+var table diag = table.new(position.top_right, 2, 14, border_width = 1,
      frame_width = 1, frame_color = color.gray)
 
 diagRow(int r, string k, string v) =>
@@ -37,6 +52,9 @@ if showDiag and barstate.islast
     diagRow(8,  "ID born",      na(idObj) ? "—" : stamp(idObj.born))
     diagRow(9,  "ID range",     na(idObj) ? "no box" : str.tostring(idObj.bot, format.mintick) + " – " + str.tostring(idObj.top, format.mintick) + "  " + sided(idObj.side))
     diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
+    diagRow(11, "structure",    not structOn ? "off" : (structDir > 0 ? "up" : "down"))
+    diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLo, format.mintick) + " – " + str.tostring(structHi, format.mintick))
+    diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structFlipT) + "  " + (structFlipDir > 0 ? "to up" : structFlipDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structFlips))
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
 alertcondition(isNewMax, "Node · New daily volume high",
