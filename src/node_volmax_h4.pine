@@ -34,6 +34,8 @@ excludedInput = input.text_area(
      "Skipped sessions", group = G_COMMON,
      tooltip = "Sessions that produce no objects at all, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw.")
 warnGrid = input.bool(true, "Warn when the chart does not fit the grid", group = G_COMMON)
+showDiag = input.bool(false, "Diagnostics table", group = G_COMMON,
+     tooltip = "Reports the state behind the drawings on the last bar: what the feeds say the session is, when the last turnover happened, and where each object stands.")
 
 enableM      = input.bool(true, "Enable M objects", group = G_M,
      tooltip = "Off means no M object is ever created, not merely hidden. It also removes one of the two ways a NY ID object can be triggered, the other being an ID object getting absorbed.")
@@ -220,6 +222,7 @@ type MObject
 
 var array<MObject> mObjects = array.new<MObject>()
 var MObject prov = na                   // winner of the session in progress
+var int lastTurnT = na                  // when the session last turned over
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 // Driven by the H4 feed rather than by the grid, since that is what decides
@@ -232,6 +235,8 @@ if not na(wTime)
     objSide = wClose > wOpen ? 1 : wClose < wOpen ? -1 : 0
 
     if isNewSession
+        lastTurnT := time
+
         // The previous session is closed, so its winner is final. Only now
         // does the M object get drawn: while the session is running the
         // winner can still change hands, and the region cannot be used yet.
@@ -417,6 +422,7 @@ var float idBot     = na
 var bool  idTouched = false             // the box stopped growing
 var int   idSide    = 0                 // of its source candle: which edge
 var bool  idEaten   = false             // losing it means absorbed
+var int   idBornT   = na                // when the box on screen was created
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
@@ -429,6 +435,7 @@ if isNewSession
     idTouched := false
     idSide    := 0
     idEaten   := false
+    idBornT   := na
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
@@ -447,6 +454,7 @@ if array.size(slT) > 0
             idTouched := false
             idSide    := idSrcSide
             idEaten   := false
+            idBornT   := sT
             idBox := box.new(idSrcTime, idSrcHigh, sT, idSrcLow,
                  xloc         = xloc.bar_time,
                  border_color = idColor,
@@ -633,6 +641,34 @@ if barstate.islast
         label.new(bar_index, high, "This symbol does not report volume on H4",
              style = label.style_label_down, color = color.new(color.red, 10),
              textcolor = color.white, size = size.small)
+
+// A reading of the state behind the drawings, so a disagreement between the
+// chart and the code can be settled by looking rather than by inference.
+
+stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
+sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
+
+var table diag = table.new(position.top_right, 2, 11, border_width = 1,
+     frame_width = 1, frame_color = color.gray)
+
+diagRow(int r, string k, string v) =>
+    table.cell(diag, 0, r, k, text_color = color.gray, text_size = size.tiny,
+         text_halign = text.align_right, bgcolor = color.new(color.black, 85))
+    table.cell(diag, 1, r, v, text_color = color.white, text_size = size.tiny,
+         text_halign = text.align_left, bgcolor = color.new(color.black, 85))
+
+if showDiag and barstate.islast
+    diagRow(0,  "chart",        timeframe.period + (coarse ? "  split" : "  bucketed"))
+    diagRow(1,  "slices / bar", str.tostring(array.size(slT)))
+    diagRow(2,  "bar",          stamp(time))
+    diagRow(3,  "H4 dayNum",    str.tostring(dayNum) + (isNewSession ? "   turning" : ""))
+    diagRow(4,  "H4 sess date", na(lastSessDate) ? "—" : str.tostring(lastSessDate))
+    diagRow(5,  "last turnover", stamp(lastTurnT))
+    diagRow(6,  "M alive",      str.tostring(array.size(mObjects)))
+    diagRow(7,  "ID source",    stamp(idSrcTime) + "  " + sided(idSrcSide))
+    diagRow(8,  "ID born",      stamp(idBornT))
+    diagRow(9,  "ID range",     na(idBox) ? "no box" : str.tostring(idBot, format.mintick) + " – " + str.tostring(idTop, format.mintick) + "  " + sided(idSide))
+    diagRow(10, "ID state",     na(idBox) ? "—" : (idTouched ? "touched" : "live") + (idEaten ? " · absorbed" : ""))
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
 alertcondition(isNewMax, "Node · New daily volume high",
