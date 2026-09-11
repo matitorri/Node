@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.11.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.11.1", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
 
@@ -355,7 +355,7 @@ if not na(idBox) and not idTouched
 // moving as the session produces a bigger one. Once price swallows the ID
 // object in turn it freezes there and the session is done with it.
 
-h1Closed = not na(h1Time) and h1Time != h1Time[1]
+h1Closed = not na(h1Time) and (na(h1Time[1]) or h1Time != h1Time[1])
 
 // The running best is kept from the first New York candle, armed or not, so
 // a swallow late in the session can still hand the place to a candle that
@@ -369,7 +369,9 @@ if h1Closed and not nyDone
         nyVol  := h1Vol
 
 // One region at a time: when the best changes hands the previous box goes.
-if nyArmed and not nyDone and not na(nySrcT) and nyDrawnT != nySrcT
+// The na guard is load bearing: comparing an unset nyDrawnT yields na, which
+// reads as false and would keep the first box from ever being drawn.
+if nyArmed and not nyDone and not na(nySrcT) and (na(nyDrawnT) or nyDrawnT != nySrcT)
     if not na(nyBox)
         box.delete(nyBox)
     nyDrawnT := nySrcT
