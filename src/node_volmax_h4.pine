@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.7.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.7.1", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
 
@@ -144,7 +144,10 @@ var array<MObject> mObjects = array.new<MObject>()
 var MObject prov = na                   // winner of the session in progress
 var int lastMSide = 0                   // side of the M object born from the
                                         // session that just closed, 0 if none
-var box idBox = na                      // ID object of the session in progress
+var box   idBox     = na                // ID object of the session in progress
+var float idTop     = na
+var float idBot     = na
+var bool  idTouched = false
 
 // ─────────────────────  NEW YORK OPEN DETECTION  ────────────────────────
 // The trim window closes on the first bar at or after 09:30 ET.
@@ -178,7 +181,10 @@ if not na(wTime)
         // The ID object belongs to the session that just ended.
         if not na(idBox)
             box.delete(idBox)
-            idBox := na
+            idBox     := na
+            idTop     := na
+            idBot     := na
+            idTouched := false
 
         if not na(prov)
             lastMSide := 0
@@ -259,25 +265,33 @@ if array.size(mObjects) > 0
 
 if isNyOpenBar
     reqSide = -lastMSide
-    int   idT   = na
-    float idTop = na
-    float idBot = na
+    int   candT   = na
+    float candTop = na
+    float candBot = na
     if reqSide > 0 and not na(upVol)
-        idT   := upTime
-        idTop := upHigh
-        idBot := upLow
+        candT   := upTime
+        candTop := upHigh
+        candBot := upLow
     else if reqSide < 0 and not na(dnVol)
-        idT   := dnTime
-        idTop := dnHigh
-        idBot := dnLow
-    if not na(idT)
-        idBox := box.new(idT, idTop, time, idBot,
+        candT   := dnTime
+        candTop := dnHigh
+        candBot := dnLow
+    if not na(candT)
+        idTop     := candTop
+        idBot     := candBot
+        idTouched := false
+        idBox := box.new(candT, candTop, time, candBot,
              xloc         = xloc.bar_time,
              border_color = idColor,
              bgcolor      = color.new(idColor, 85))
 
-if not na(idBox)
+// Same rule as an M object: the region projects right until price enters it,
+// then the box freezes where that happened. It is still removed with its
+// session, touched or not.
+if not na(idBox) and not idTouched
     box.set_right(idBox, time)
+    if high >= idBot and low <= idTop
+        idTouched := true
 
 // ──────────────────────────────  WARNINGS  ──────────────────────────────
 
