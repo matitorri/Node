@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.11.2", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.12.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ════════════════════════════════  SHARED  ══════════════════════════════
 // Constants, inputs and the clock the three objects read. Nothing here
@@ -28,8 +28,28 @@ lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1,
 excludedInput = input.text_area(
      "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
      "Skipped sessions",
-     tooltip = "Sessions that produce no M object, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, no M object.")
+     tooltip = "Sessions that produce no objects at all, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw.")
 warnPrecision = input.bool(true, "Warn when the chart is above M15")
+
+// ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
+// The skip list, parsed once into YYYYMMDD numbers. Separators and any
+// punctuation in the dates are stripped, so 2025-11-28 and 20251128 both work.
+var array<int> excludedDates = array.new<int>()
+if barstate.isfirst
+    parts = str.split(str.replace_all(excludedInput, "\n", ","), ",")
+    for i = 0 to array.size(parts) - 1
+        raw   = array.get(parts, i)
+        clean = str.replace_all(str.replace_all(str.replace_all(raw, "-", ""), "/", ""), " ", "")
+        num   = str.tonumber(clean)
+        if not na(num)
+            array.push(excludedDates, int(num))
+
+// A session's closing date is the New York date of every bar from midnight
+// onwards, which is the whole window the two ID objects live in. The M
+// object is born at the session turnover instead, and reads the date its
+// own feed reports.
+nyDate      = year(time, NY_TZ) * 10000 + month(time, NY_TZ) * 100 + dayofmonth(time, NY_TZ)
+dayExcluded = array.includes(excludedDates, nyDate)
 
 // ─────────────────────────  NEW YORK CLOCK  ─────────────────────────────
 // isNyOpenBar marks the first bar at or after 09:30 ET, which closes an M
@@ -89,18 +109,6 @@ h4DailyMax() =>
 
 [wTime, wOpen, wHigh, wLow, wClose, wVol, dayNum, lastSessDate] = request.security(
      syminfo.tickerid, SRC_TF, h4DailyMax(), lookahead = barmerge.lookahead_off)
-
-// The skip list, parsed once into YYYYMMDD numbers. Separators and any
-// punctuation in the dates are stripped, so 2025-11-28 and 20251128 both work.
-var array<int> excludedDates = array.new<int>()
-if barstate.isfirst
-    parts = str.split(str.replace_all(excludedInput, "\n", ","), ",")
-    for i = 0 to array.size(parts) - 1
-        raw   = array.get(parts, i)
-        clean = str.replace_all(str.replace_all(str.replace_all(raw, "-", ""), "/", ""), " ", "")
-        num   = str.tonumber(clean)
-        if not na(num)
-            array.push(excludedDates, int(num))
 
 // ───────────────────────────  STATE  ────────────────────────────────────
 
@@ -327,7 +335,7 @@ if isNewSession
 // Born at the New York open from the highest-volume H1 candle of the pre-NY
 // window that price did not absorb. No trim, and it dies with its session.
 
-if isNyOpenBar and not na(idSrcTime)
+if isNyOpenBar and not dayExcluded and not na(idSrcTime)
     idTop     := idSrcHigh
     idBot     := idSrcLow
     idTouched := false
@@ -436,7 +444,7 @@ if array.size(nyT) > 0
                 nyBestL := array.get(nyL, i)
 
 // One region at a time: when the place changes hands the previous box goes.
-if nyArmed and not nyDone and not na(nyBestT) and (na(nyDrawnT) or nyBestT != nyDrawnT)
+if nyArmed and not nyDone and not dayExcluded and not na(nyBestT) and (na(nyDrawnT) or nyBestT != nyDrawnT)
     if not na(nyBox)
         box.delete(nyBox)
     nyDrawnT := nyBestT
