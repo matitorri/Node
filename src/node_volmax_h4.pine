@@ -82,10 +82,10 @@ if isNyOpenBar
 
 inNy = nyMinutes >= NY_START_MIN and nyMinutes < NY_END_MIN
 
-// Set by whichever region price swallows during New York, M or ID, and read
-// by the NY ID object. Cleared at the session turnover, which is the first
-// point in the bar where the turnover is known.
-var bool nyArmed = false
+// Raised on any bar where price absorbs an M object or an ID object during
+// New York, and read by the NY ID object. A pulse, not a latch: every one of
+// these events makes the NY ID object pick again.
+bool nyEvent = false
 
 // ═══════════════════════════════  M OBJECT  ═════════════════════════════
 // The price region left by the winning H4 candle of a session. Built over
@@ -164,9 +164,6 @@ if not na(wTime)
         // Holiday half sessions still open a daily bar, so they would produce
         // an M object on a fraction of the usual volume. Skipped by date.
         sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
-
-        // Cleared with the session, like everything else scoped to a day.
-        nyArmed := false
 
         if not na(prov)
             if enableM and prov.side != 0 and sessionOk
@@ -249,7 +246,7 @@ if array.size(mObjects) > 0
             if obj.side > 0 ? low < obj.bot : high > obj.top
                 obj.eaten := true
                 if inNy
-                    nyArmed := true
+                    nyEvent := true
 
         if drop
             array.remove(mObjects, i)
@@ -381,14 +378,14 @@ if not na(idBox) and not idEaten
     if idSide > 0 ? low < idBot : high > idTop
         idEaten := true
         if inNy
-            nyArmed := true
+            nyEvent := true
 
 // ═════════════════════════════  NY ID OBJECT  ═══════════════════════════
-// Price swallowing an M object or an ID object during New York is an event,
-// and it is what brings this one into being. At that instant the
-// highest-volume New York H1 candle so far takes the place — the one still
-// forming included — and keeps it for the session. It ends when price
-// swallows it in turn.
+// Price absorbing an M object or an ID object during New York is an event.
+// Every one of them picks the region again: the highest-volume New York H1
+// candle standing at that instant, the one still forming included, read at
+// whatever it has reached by then. Between events nothing moves. It ends
+// when price absorbs the region in turn, and the session gives no more.
 
 // ───────────────────────────  STATE  ────────────────────────────────────
 
@@ -504,9 +501,11 @@ if not na(curNyMin) and curNyMin >= NY_START_MIN and curNyMin < NY_END_MIN and c
         nyBestL := curL
         nyBestS := curSide
 
-// Drawn once, on the swallow that armed the session. Whatever closes
-// afterwards does not take the place.
-if enableNyId and nyArmed and not nyDone and not dayExcluded and na(nyBox) and not na(nyBestT)
+// Redrawn on every event, and only on an event: a bigger candle closing in
+// between does not take the place on its own.
+if enableNyId and nyEvent and not nyDone and not dayExcluded and not na(nyBestT)
+    if not na(nyBox)
+        box.delete(nyBox)
     nyDrawnT := nyBestT
     nyTop    := nyBestH
     nyBot    := nyBestL
