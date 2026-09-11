@@ -34,7 +34,7 @@ excludedInput = input.text_area(
 warnPrecision = input.bool(true, "Warn when the chart is above M15", group = G_COMMON)
 
 enableM      = input.bool(true, "Enable M objects", group = G_M,
-     tooltip = "Off means no M object is ever created, not merely hidden. NY ID objects go with them: one is born from price swallowing an M object, so without M objects there is nothing to swallow.")
+     tooltip = "Off means no M object is ever created, not merely hidden. It also removes one of the two ways a NY ID object can arm, the other being an ID object getting swallowed.")
 markColor    = input.color(color.new(color.orange, 0), "M object color", group = G_M)
 lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1, group = G_M,
      tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
@@ -82,10 +82,15 @@ if isNyOpenBar
 
 inNy = nyMinutes >= NY_START_MIN and nyMinutes < NY_END_MIN
 
+// Set by whichever region price swallows during New York, M or ID, and read
+// by the NY ID object. Cleared at the session turnover, which is the first
+// point in the bar where the turnover is known.
+var bool nyArmed = false
+
 // ═══════════════════════════════  M OBJECT  ═════════════════════════════
 // The price region left by the winning H4 candle of a session. Built over
-// its trim window, then alive until price touches it. Publishes two things
-// the other objects read: isNewSession and nyArmed.
+// its trim window, then alive until price touches it. Publishes
+// isNewSession, which the other two objects read.
 
 // ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
 // Keeps its own state on H4 bars, so the winning candle is the same
@@ -144,8 +149,6 @@ type MObject
 
 var array<MObject> mObjects = array.new<MObject>()
 var MObject prov = na                   // winner of the session in progress
-var bool nyArmed = false                // an M object was swallowed today,
-                                        // read by the NY ID object
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
@@ -239,7 +242,8 @@ if array.size(mObjects) > 0
                 box.set_right(obj.bx, time)
 
         // Price swallows a region by covering it end to end, however many
-        // bars that takes. One swallowed during New York arms the ID object.
+        // bars that takes. One swallowed during New York arms the NY ID
+        // object, and so does an ID object going the same way.
         if not drop and obj.active and not obj.eaten
             obj.aMin := na(obj.aMin) ? low  : math.min(obj.aMin, low)
             obj.aMax := na(obj.aMax) ? high : math.max(obj.aMax, high)
@@ -333,7 +337,10 @@ h1PreNySurvivor() =>
 var box   idBox     = na                // pre-NY ID object of this session
 var float idTop     = na
 var float idBot     = na
-var bool  idTouched = false
+var bool  idTouched = false             // the box stopped growing
+var float idAMin    = na                // extremes seen since it was born,
+var float idAMax    = na                // used to tell when it is swallowed
+var bool  idEaten   = false
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
@@ -344,6 +351,9 @@ if isNewSession
     idTop     := na
     idBot     := na
     idTouched := false
+    idAMin    := na
+    idAMax    := na
+    idEaten   := false
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 // Born at the New York open from the highest-volume H1 candle of the pre-NY
@@ -353,6 +363,9 @@ if enableId and isNyOpenBar and not dayExcluded and not na(idSrcTime)
     idTop     := idSrcHigh
     idBot     := idSrcLow
     idTouched := false
+    idAMin    := na
+    idAMax    := na
+    idEaten   := false
     idBox := box.new(idSrcTime, idSrcHigh, time, idSrcLow,
          xloc         = xloc.bar_time,
          border_color = idColor,
@@ -366,9 +379,20 @@ if not na(idBox) and not idTouched
     if high >= idBot and low <= idTop
         idTouched := true
 
+// Swallowing is a different matter from being touched, and it keeps being
+// watched after the box settles: an ID object covered end to end during New
+// York arms the NY ID object, exactly as an M object does.
+if not na(idBox) and not idEaten
+    idAMin := na(idAMin) ? low  : math.min(idAMin, low)
+    idAMax := na(idAMax) ? high : math.max(idAMax, high)
+    if idAMin <= idBot and idAMax >= idTop
+        idEaten := true
+        if inNy
+            nyArmed := true
+
 // ═════════════════════════════  NY ID OBJECT  ═══════════════════════════
-// Price swallowing an M object during New York arms the session. The
-// region is then the highest-volume New York H1 candle still standing,
+// Price swallowing an M object or an ID object during New York arms the
+// session. The region is then the highest-volume NY H1 candle still standing,
 // moving as the session produces a bigger one, and frozen for good once
 // price swallows the holder in turn.
 
