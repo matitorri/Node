@@ -1,99 +1,37 @@
 //@version=6
 
-indicator("Structure lab", overlay = true, max_lines_count = 500, max_labels_count = 500)
+indicator("Structure lab", overlay = true)
 
-// A scratch script for one question: what makes a peak a peak.
+// Pattern objects, step one: the candidates.
 //
-// A peak is confirmed once price retraces at least `minRetrace` from it.
-// Until then it is provisional and simply moves with price, so a one-way
-// leg produces no intermediate peaks however long it runs. Nothing here
-// looks at candles or counts bars — only at distance travelled.
+// A candidate low is a local minimum — a candle whose low sits below the
+// one after it and not above the one before it. Candidate highs are the
+// mirror. No window, no threshold, no parameter: they are meant to be
+// dense, since the filter that picks the structural ones out of them comes
+// later.
 //
-// Runs on the chart's own bars, so open it on the timeframe the structure
-// is meant to be read on. It is a lab, not the model.
+// Built forward rather than scanned backward. Pine runs the whole script
+// once per candle, so a loop walking back would redo its own work on every
+// bar and cost the square of the history. A local extreme never changes its
+// mind once the next candle confirms it, so seeing it once is enough — the
+// collection ends up identical.
+//
+// Runs on the chart's own candles. Open it on the timeframe the structure
+// is meant to be read on.
 
-minRetrace = input.float(20.0, "Minimum retracement", minval = 0.0, step = 0.25,
-     tooltip = "How far price has to come back from a high before that high counts as a high. Below it, the leg is simply extending.")
-showLabels = input.bool(true, "Label the swings")
-showLevels = input.bool(true, "Hold the last confirmed high and low")
-upColor    = input.color(color.new(color.teal, 0),   "Highs")
-dnColor    = input.color(color.new(color.maroon, 0), "Lows")
+showLows  = input.bool(true, "Candidate lows")
+showHighs = input.bool(true, "Candidate highs")
+lowColor  = input.color(color.new(color.teal, 0),   "Lows")
+highColor = input.color(color.new(color.maroon, 0), "Highs")
 
-// ───────────────────────────  THE MACHINE  ──────────────────────────────
+// ─────────────────────────────  CANDIDATES  ─────────────────────────────
+// Judged on the candle that just closed, which is the first moment both of
+// its neighbours are known.
 
-var int   dir  = 1                      // +1 tracking a high, -1 tracking a low
-var float ext  = na                     // the provisional extreme
-var int   extT = na
+candLow  = low[1]  <  low[0]  and low[1]  <= low[2]
+candHigh = high[1] >  high[0] and high[1] >= high[2]
 
-var float lastHigh = na                 // last confirmed of each kind, kept
-var float lastLow  = na                 // for classifying the next one
-var float prevP    = na                 // last confirmed point, for the line
-var int   prevT    = na
-
-if na(ext)
-    ext  := close
-    extT := time
-
-bool  confirmed = false
-bool  isHigh    = false
-float cp        = na
-int   ct        = na
-
-if dir == 1
-    if high > ext
-        ext  := high                    // the leg extends; no peak yet
-        extT := time
-    else if ext - low >= minRetrace
-        confirmed := true
-        isHigh    := true
-        cp        := ext
-        ct        := extT
-        dir  := -1
-        ext  := low
-        extT := time
-else
-    if low < ext
-        ext  := low
-        extT := time
-    else if high - ext >= minRetrace
-        confirmed := true
-        isHigh    := false
-        cp        := ext
-        ct        := extT
-        dir  := 1
-        ext  := high
-        extT := time
-
-// ───────────────────────────  CLASSIFY  ─────────────────────────────────
-// A peak is only a higher high or a lower high once there is a previous one
-// to compare it with.
-
-if confirmed
-    string tag = ""
-    if isHigh
-        tag      := na(lastHigh) ? "H" : cp > lastHigh ? "HH" : "LH"
-        lastHigh := cp
-    else
-        tag     := na(lastLow) ? "L" : cp < lastLow ? "LL" : "HL"
-        lastLow := cp
-
-    if not na(prevT)
-        line.new(prevT, prevP, ct, cp, xloc = xloc.bar_time,
-             color = isHigh ? upColor : dnColor, width = 1)
-    if showLabels
-        label.new(ct, cp, tag, xloc = xloc.bar_time,
-             style     = isHigh ? label.style_label_down : label.style_label_up,
-             color     = color.new(isHigh ? upColor : dnColor, 20),
-             textcolor = color.white, size = size.tiny)
-
-    prevP := cp
-    prevT := ct
-
-// ────────────────────────────  LEVELS  ──────────────────────────────────
-// The two the structure currently stands on. Flat until a new peak is
-// confirmed, which is the whole point.
-
-plot(showLevels ? lastHigh : na, "Last confirmed high", color = upColor,
-     style = plot.style_stepline, linewidth = 1)
-plot(showLevels ? lastLow : na,  "Last confirmed low",  color = dnColor,
-     style = plot.style_stepline, linewidth = 1)
+plotshape(showLows  and candLow,  "Candidate low",  shape.circle,
+     location.belowbar, color = lowColor,  size = size.tiny, offset = -1)
+plotshape(showHighs and candHigh, "Candidate high", shape.circle,
+     location.abovebar, color = highColor, size = size.tiny, offset = -1)
