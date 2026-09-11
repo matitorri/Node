@@ -141,9 +141,8 @@ type MObject
     bool  active = false                // trimmed and touchable
     bool  frozen = false                // touched: the box stopped growing,
                                         // but the region is still watched
-    float aMin   = na                   // extremes seen since it went active,
-    float aMax   = na                   // used to tell when it is swallowed
-    bool  eaten  = false
+    bool  eaten  = false                // price took the edge its side lives
+                                        // off, so the region is gone
     int   expire = na
     box   bx     = na
 
@@ -241,13 +240,13 @@ if array.size(mObjects) > 0
             else
                 box.set_right(obj.bx, time)
 
-        // Price swallows a region by covering it end to end, however many
-        // bars that takes. One swallowed during New York arms the NY ID
-        // object, and so does an ID object going the same way.
+        // The trim already leaves price on the side the candle came from, so
+        // the edge that ends the region is the far one: a bullish region dies
+        // on its low, a bearish one on its high. Absorbed during New York,
+        // it arms the NY ID object, and so does an ID object going the same
+        // way.
         if not drop and obj.active and not obj.eaten
-            obj.aMin := na(obj.aMin) ? low  : math.min(obj.aMin, low)
-            obj.aMax := na(obj.aMax) ? high : math.max(obj.aMax, high)
-            if obj.aMin <= obj.bot and obj.aMax >= obj.top
+            if obj.side > 0 ? low < obj.bot : high > obj.top
                 obj.eaten := true
                 if inNy
                     nyArmed := true
@@ -262,19 +261,17 @@ if array.size(mObjects) > 0
 
 // ──────────  PRE-NEW-YORK SURVIVOR (runs on the H1 series)  ────────────
 // Every H1 candle of the window that runs from the session open to the New
-// York open is kept, along with the price extremes reached after it closed.
-// A candle whose range price later covered end to end is absorbed and drops
-// out. The winner is the highest-volume candle still standing, so being
-// swept hands the place over to the next one down.
+// York open is kept until price absorbs it. The winner is the highest-volume
+// candle still standing, so being absorbed hands the place to the next one
+// down. Dojis are never candidates: with no side there is no edge to lose.
 
 h1PreNySurvivor() =>
     var array<int>   cTime = array.new<int>()
     var array<float> cHigh = array.new<float>()
     var array<float> cLow  = array.new<float>()
     var array<float> cVol  = array.new<float>()
+    var array<int>   cSide = array.new<int>()
     var array<bool>  cGone = array.new<bool>()
-    var array<float> cMin  = array.new<float>()   // extremes seen after the
-    var array<float> cMax  = array.new<float>()   // candle closed
     var bool inWin = false
 
     if timeframe.change("D")
@@ -283,9 +280,8 @@ h1PreNySurvivor() =>
         array.clear(cHigh)
         array.clear(cLow)
         array.clear(cVol)
+        array.clear(cSide)
         array.clear(cGone)
-        array.clear(cMin)
-        array.clear(cMax)
 
     nyMin = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
     // The window closes on the first candle that would run past 09:30 ET.
@@ -299,30 +295,25 @@ h1PreNySurvivor() =>
         if array.size(cTime) > 0
             for i = 0 to array.size(cTime) - 1
                 if not array.get(cGone, i)
-                    lo = na(array.get(cMin, i)) ? low  : math.min(array.get(cMin, i), low)
-                    hi = na(array.get(cMax, i)) ? high : math.max(array.get(cMax, i), high)
-                    array.set(cMin, i, lo)
-                    array.set(cMax, i, hi)
-                    if lo <= array.get(cLow, i) and hi >= array.get(cHigh, i)
+                    if array.get(cSide, i) > 0 ? low < array.get(cLow, i) : high > array.get(cHigh, i)
                         array.set(cGone, i, true)
-        array.push(cTime, time)
-        array.push(cHigh, high)
-        array.push(cLow,  low)
-        array.push(cVol,  volume)
-        array.push(cGone, false)
-        array.push(cMin,  na)
-        array.push(cMax,  na)
+        candleSide = close > open ? 1 : close < open ? -1 : 0
+        if candleSide != 0
+            array.push(cTime, time)
+            array.push(cHigh, high)
+            array.push(cLow,  low)
+            array.push(cVol,  volume)
+            array.push(cSide, candleSide)
+            array.push(cGone, false)
 
-    // Highest volume among the candles still standing, handed back with the
-    // extremes already reached since it closed. The region does not start
-    // untouched at the New York open, and pretending otherwise loses the
-    // half of a swallow that happened before it.
+    // Highest volume among the candles still standing. The winner reaches
+    // the open un-absorbed by construction: one that had lost its edge would
+    // already have dropped out.
     int   bTime = na
     float bHigh = na
     float bLow  = na
     float bVol  = na
-    float bMin  = na
-    float bMax  = na
+    int   bSide = 0
     if array.size(cTime) > 0
         for i = 0 to array.size(cTime) - 1
             if not array.get(cGone, i)
@@ -332,11 +323,10 @@ h1PreNySurvivor() =>
                     bTime := array.get(cTime, i)
                     bHigh := array.get(cHigh, i)
                     bLow  := array.get(cLow, i)
-                    bMin  := array.get(cMin, i)
-                    bMax  := array.get(cMax, i)
-    [bTime, bHigh, bLow, bVol, bMin, bMax]
+                    bSide := array.get(cSide, i)
+    [bTime, bHigh, bLow, bVol, bSide]
 
-[idSrcTime, idSrcHigh, idSrcLow, idSrcVol, idSrcMin, idSrcMax] = request.security(
+[idSrcTime, idSrcHigh, idSrcLow, idSrcVol, idSrcSide] = request.security(
      syminfo.tickerid, ID_TF, h1PreNySurvivor(), lookahead = barmerge.lookahead_off)
 
 // ───────────────────────────  STATE  ────────────────────────────────────
@@ -345,9 +335,8 @@ var box   idBox     = na                // pre-NY ID object of this session
 var float idTop     = na
 var float idBot     = na
 var bool  idTouched = false             // the box stopped growing
-var float idAMin    = na                // extremes seen since it was born,
-var float idAMax    = na                // used to tell when it is swallowed
-var bool  idEaten   = false
+var int   idSide    = 0                 // of its source candle: which edge
+var bool  idEaten   = false             // losing it means absorbed
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
@@ -358,8 +347,7 @@ if isNewSession
     idTop     := na
     idBot     := na
     idTouched := false
-    idAMin    := na
-    idAMax    := na
+    idSide    := 0
     idEaten   := false
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
@@ -370,8 +358,7 @@ if enableId and isNyOpenBar and not dayExcluded and not na(idSrcTime)
     idTop     := idSrcHigh
     idBot     := idSrcLow
     idTouched := false
-    idAMin    := idSrcMin                // carried over: what price already
-    idAMax    := idSrcMax                // did to the region before the open
+    idSide    := idSrcSide
     idEaten   := false
     idBox := box.new(idSrcTime, idSrcHigh, time, idSrcLow,
          xloc         = xloc.bar_time,
@@ -386,16 +373,12 @@ if not na(idBox) and not idTouched
     if high >= idBot and low <= idTop
         idTouched := true
 
-// Swallowing is a different matter from being touched, and it keeps being
-// watched after the box settles: an ID object covered end to end during New
-// York arms the NY ID object, exactly as an M object does. The count runs
-// from the source candle's close, not from the open, because unlike an M
-// object this region reaches 09:30 with no trim to guarantee price has
-// stayed off it.
+// Absorption is a different matter from being touched, and it keeps being
+// watched after the box settles. A bullish region lives off its low and a
+// bearish one off its high: lose that edge, by a tick, and the region is
+// gone. One absorbed during New York arms the NY ID object.
 if not na(idBox) and not idEaten
-    idAMin := na(idAMin) ? low  : math.min(idAMin, low)
-    idAMax := na(idAMax) ? high : math.max(idAMax, high)
-    if idAMin <= idBot and idAMax >= idTop
+    if idSide > 0 ? low < idBot : high > idTop
         idEaten := true
         if inNy
             nyArmed := true
@@ -413,27 +396,27 @@ var box   nyBox    = na                 // NY ID object of this session
 var int   nyDrawnT = na                 // candle it was taken from
 var float nyTop    = na                 // as drawn, which for a candle still
 var float nyBot    = na                 // forming is not its final range
-var float nyAMin   = na                 // extremes seen since it was drawn
-var float nyAMax   = na
-var bool  nyDone   = false              // price swallowed it in turn
+var int   nySide   = 0                  // which edge ends it
+var bool  nyDone   = false              // price took that edge
 
 // The H1 candle in progress, accumulated from chart bars. request.security
 // cannot hand back an unclosed candle on history, and an unclosed candle is
 // exactly what may have to be picked.
 var int   curT = na
+var float curO = na
 var float curH = na
 var float curL = na
+var float curC = na
 var float curV = na
 
-// Every New York H1 candle that has closed, with the extremes reached after
-// it, so one price has covered end to end stays out of the choice.
+// Every New York H1 candle that has closed, dropped once price takes the
+// edge its side lives off, so an absorbed one stays out of the choice.
 var array<int>   nyT    = array.new<int>()
 var array<float> nyH    = array.new<float>()
 var array<float> nyL    = array.new<float>()
 var array<float> nyV    = array.new<float>()
+var array<int>   nySd   = array.new<int>()
 var array<bool>  nyGone = array.new<bool>()
-var array<float> nyRMin = array.new<float>()
-var array<float> nyRMax = array.new<float>()
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
@@ -444,53 +427,53 @@ if isNewSession
     nyDrawnT := na
     nyTop    := na
     nyBot    := na
-    nyAMin   := na
-    nyAMax   := na
+    nySide   := 0
     nyDone   := false
     curT     := na                      // so the candle straddling the
-    curH     := na                      // turnover is not filed under the
-    curL     := na                      // session that is starting
+    curO     := na                      // turnover is not filed under the
+    curH     := na                      // session that is starting
+    curL     := na
+    curC     := na
     curV     := na
     array.clear(nyT)
     array.clear(nyH)
     array.clear(nyL)
     array.clear(nyV)
+    array.clear(nySd)
     array.clear(nyGone)
-    array.clear(nyRMin)
-    array.clear(nyRMax)
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
 if timeframe.change(ID_TF) or na(curT)
-    // The candle that just ended joins the closed ones.
+    // The candle that just ended joins the closed ones, unless it closed a
+    // doji and so has no edge to lose.
     if not na(curT)
+        endedSide  = curC > curO ? 1 : curC < curO ? -1 : 0
         endedNyMin = hour(curT, NY_TZ) * 60 + minute(curT, NY_TZ)
-        if endedNyMin >= NY_START_MIN and endedNyMin < NY_END_MIN
+        if endedSide != 0 and endedNyMin >= NY_START_MIN and endedNyMin < NY_END_MIN
             array.push(nyT,    curT)
             array.push(nyH,    curH)
             array.push(nyL,    curL)
             array.push(nyV,    curV)
+            array.push(nySd,   endedSide)
             array.push(nyGone, false)
-            array.push(nyRMin, na)
-            array.push(nyRMax, na)
     curT := time
+    curO := open
     curH := high
     curL := low
+    curC := close
     curV := nz(volume)
 else
     curH := math.max(curH, high)
     curL := math.min(curL, low)
+    curC := close
     curV := curV + nz(volume)
 
-// Age the closed ones, so a swallowed candle cannot be chosen later.
+// Age the closed ones, so an absorbed candle cannot be chosen later.
 if array.size(nyT) > 0
     for i = 0 to array.size(nyT) - 1
         if not array.get(nyGone, i) and time >= array.get(nyT, i) + ID_TF_MS
-            lo = na(array.get(nyRMin, i)) ? low  : math.min(array.get(nyRMin, i), low)
-            hi = na(array.get(nyRMax, i)) ? high : math.max(array.get(nyRMax, i), high)
-            array.set(nyRMin, i, lo)
-            array.set(nyRMax, i, hi)
-            if lo <= array.get(nyL, i) and hi >= array.get(nyH, i)
+            if array.get(nySd, i) > 0 ? low < array.get(nyL, i) : high > array.get(nyH, i)
                 array.set(nyGone, i, true)
 
 // Highest volume among the candles still standing, the one in progress
@@ -499,6 +482,7 @@ int   nyBestT = na
 float nyBestH = na
 float nyBestL = na
 float nyBestV = na
+int   nyBestS = 0
 if array.size(nyT) > 0
     for i = 0 to array.size(nyT) - 1
         if not array.get(nyGone, i)
@@ -508,14 +492,17 @@ if array.size(nyT) > 0
                 nyBestT := array.get(nyT, i)
                 nyBestH := array.get(nyH, i)
                 nyBestL := array.get(nyL, i)
+                nyBestS := array.get(nySd, i)
 
-curNyMin = na(curT) ? na : hour(curT, NY_TZ) * 60 + minute(curT, NY_TZ)
-if not na(curNyMin) and curNyMin >= NY_START_MIN and curNyMin < NY_END_MIN
+curNyMin  = na(curT) ? na : hour(curT, NY_TZ) * 60 + minute(curT, NY_TZ)
+curSide   = na(curT) ? 0 : curC > curO ? 1 : curC < curO ? -1 : 0
+if not na(curNyMin) and curNyMin >= NY_START_MIN and curNyMin < NY_END_MIN and curSide != 0
     if na(nyBestV) or curV > nyBestV
         nyBestV := curV
         nyBestT := curT
         nyBestH := curH
         nyBestL := curL
+        nyBestS := curSide
 
 // Drawn once, on the swallow that armed the session. Whatever closes
 // afterwards does not take the place.
@@ -523,8 +510,7 @@ if enableNyId and nyArmed and not nyDone and not dayExcluded and na(nyBox) and n
     nyDrawnT := nyBestT
     nyTop    := nyBestH
     nyBot    := nyBestL
-    nyAMin   := na
-    nyAMax   := na
+    nySide   := nyBestS
     nyBox := box.new(nyBestT, nyBestH, time, nyBestL,
          xloc         = xloc.bar_time,
          border_color = nyIdColor,
@@ -534,9 +520,7 @@ if enableNyId and nyArmed and not nyDone and not dayExcluded and na(nyBox) and n
 // went on to become.
 if not na(nyBox) and not nyDone
     box.set_right(nyBox, time)
-    nyAMin := na(nyAMin) ? low  : math.min(nyAMin, low)
-    nyAMax := na(nyAMax) ? high : math.max(nyAMax, high)
-    if nyAMin <= nyBot and nyAMax >= nyTop
+    if nySide > 0 ? low < nyBot : high > nyTop
         nyDone := true
 
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
