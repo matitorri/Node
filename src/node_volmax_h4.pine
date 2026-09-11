@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.12.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.13.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ════════════════════════════════  SHARED  ══════════════════════════════
 // Constants, inputs and the clock the three objects read. Nothing here
@@ -21,15 +21,25 @@ NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
 
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
 
-markColor    = input.color(color.new(color.orange, 0), "M object color")
-idColor      = input.color(color.new(color.blue, 0), "ID object color")
-lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1,
-     tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
+// Groups, in the order they appear in the settings dialog.
+G_COMMON = "Common"
+G_M      = "M Objects"
+G_ID     = "ID Objects"
+G_NY     = "NY ID Object"
+
 excludedInput = input.text_area(
      "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
-     "Skipped sessions",
+     "Skipped sessions", group = G_COMMON,
      tooltip = "Sessions that produce no objects at all, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw.")
-warnPrecision = input.bool(true, "Warn when the chart is above M15")
+warnPrecision = input.bool(true, "Warn when the chart is above M15", group = G_COMMON)
+
+markColor    = input.color(color.new(color.orange, 0), "M object color", group = G_M)
+lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1, group = G_M,
+     tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
+
+idColor      = input.color(color.new(color.blue, 0), "ID object color", group = G_ID)
+
+nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_NY)
 
 // ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
 // The skip list, parsed once into YYYYMMDD numbers. Separators and any
@@ -450,8 +460,8 @@ if nyArmed and not nyDone and not dayExcluded and not na(nyBestT) and (na(nyDraw
     nyDrawnT := nyBestT
     nyBox := box.new(nyBestT, nyBestH, time, nyBestL,
          xloc         = xloc.bar_time,
-         border_color = idColor,
-         bgcolor      = color.new(idColor, 85))
+         border_color = nyIdColor,
+         bgcolor      = color.new(nyIdColor, 85))
 
 if not na(nyBox) and not nyDone
     box.set_right(nyBox, time)
