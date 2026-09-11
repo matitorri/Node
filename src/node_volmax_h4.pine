@@ -33,13 +33,25 @@ excludedInput = input.text_area(
      tooltip = "Sessions that produce no objects at all, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw.")
 warnPrecision = input.bool(true, "Warn when the chart is above M15", group = G_COMMON)
 
+showM        = input.bool(true, "Show M objects", group = G_M,
+     tooltip = "Hides the boxes. The regions keep being tracked either way, so switching this off cannot change what the other objects do.")
 markColor    = input.color(color.new(color.orange, 0), "M object color", group = G_M)
 lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1, group = G_M,
      tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
 
+showId       = input.bool(true, "Show ID objects", group = G_ID)
 idColor      = input.color(color.new(color.blue, 0), "ID object color", group = G_ID)
 
+showNyId     = input.bool(true, "Show NY ID object", group = G_NY)
 nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_NY)
+
+// ──────────────────────────  VISIBILITY  ───────────────────────────────
+// Switching an object off makes its box invisible rather than skipping it.
+// Everything is still tracked, so one object can never be turned off by
+// hiding another — the NY ID object, for one, needs M objects to be watched.
+
+edgeOf(color c, bool on) => on ? c : color.new(c, 100)
+fillOf(color c, bool on) => color.new(c, on ? 85 : 100)
 
 // ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
 // The skip list, parsed once into YYYYMMDD numbers. Separators and any
@@ -167,8 +179,8 @@ if not na(wTime)
                 prov.expire := prov.t + lifetimeDays * MS_DAY
                 prov.bx := box.new(prov.t, prov.top, time, prov.bot,
                      xloc         = xloc.bar_time,
-                     border_color = markColor,
-                     bgcolor      = color.new(markColor, 85))
+                     border_color = edgeOf(markColor, showM),
+                     bgcolor      = fillOf(markColor, showM))
                 array.push(mObjects, prov)
         prov := MObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
 
@@ -351,8 +363,8 @@ if isNyOpenBar and not dayExcluded and not na(idSrcTime)
     idTouched := false
     idBox := box.new(idSrcTime, idSrcHigh, time, idSrcLow,
          xloc         = xloc.bar_time,
-         border_color = idColor,
-         bgcolor      = color.new(idColor, 85))
+         border_color = edgeOf(idColor, showId),
+         bgcolor      = fillOf(idColor, showId))
 
 // Same rule as an M object: the region projects right until price enters it,
 // then the box freezes where that happened. It is still removed with its
@@ -460,8 +472,8 @@ if nyArmed and not nyDone and not dayExcluded and not na(nyBestT) and (na(nyDraw
     nyDrawnT := nyBestT
     nyBox := box.new(nyBestT, nyBestH, time, nyBestL,
          xloc         = xloc.bar_time,
-         border_color = nyIdColor,
-         bgcolor      = color.new(nyIdColor, 85))
+         border_color = edgeOf(nyIdColor, showNyId),
+         bgcolor      = fillOf(nyIdColor, showNyId))
 
 if not na(nyBox) and not nyDone
     box.set_right(nyBox, time)
