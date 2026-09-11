@@ -1,7 +1,6 @@
 //@version=6
 
-indicator("Node - v0.13.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
-
+indicator("Node - v0.14.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 // ════════════════════════════════  SHARED  ══════════════════════════════
 // Constants, inputs, the evaluation grid and the clock the three objects
 // read. Nothing here belongs to one of them alone.
@@ -646,7 +645,6 @@ if array.size(slT) > 0
             box.set_right(nyObj.bx, sT)
             if nyObj.side > 0 ? sL < nyObj.bot : sH > nyObj.top
                 nyObj.eaten := true
-
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
 
 if barstate.islast

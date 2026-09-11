@@ -1,0 +1,7 @@
+// ════════════════════════════════  OUTPUT  ══════════════════════════════
+// Where the rules go. The V objects are already built by this point: mObjects
+// holds the live M objects, idObj and nyObj the other two, each carrying the
+// region, its side and whether price has touched or absorbed it.
+//
+// Empty on purpose. A strategy with no orders compiles and draws the model,
+// which is what makes it useful to look at before there are any rules.
