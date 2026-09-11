@@ -9,9 +9,12 @@ plot(structOn ? structHi : na, "Structure high", color = structColor,
 plot(structOn ? structLo : na, "Structure low",  color = structColor,
      style = plot.style_stepline, linewidth = 1)
 
-plotshape(structChoch, "Change of character", shape.diamond,
-     structFlipDir > 0 ? location.belowbar : location.abovebar,
-     color = structFlipDir > 0 ? structUpColor : structDnColor, size = size.tiny)
+// One call per side: plotshape takes a constant location, so the placement
+// cannot be chosen from the direction at runtime.
+plotshape(structChoch and structFlipDir > 0, "Change of character up",
+     shape.diamond, location.belowbar, color = structUpColor, size = size.tiny)
+plotshape(structChoch and structFlipDir < 0, "Change of character down",
+     shape.diamond, location.abovebar, color = structDnColor, size = size.tiny)
 
 // ─────────────────────────────  WARNINGS  ───────────────────────────────
 
