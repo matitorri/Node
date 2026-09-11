@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.9.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
+indicator("Node - v0.10.0", overlay = true, max_boxes_count = 500, max_labels_count = 50)
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
 
@@ -8,6 +8,9 @@ SRC_TF       = "240"                    // M object source timeframe: H4
 TF_MS        = 4 * 60 * 60 * 1000       // length of one H4 candle, in ms
 ID_TF        = "60"                     // ID object source timeframe: H1
 ID_TF_MIN    = 60                       // length of one H1 candle, in minutes
+ID_TF_MS     = 60 * 60 * 1000
+NY_START_MIN = 9 * 60                   // 09:00 ET, first candle of the NY set
+NY_END_MIN   = 17 * 60                  // 17:00 ET, session close
 MS_DAY       = 24 * 60 * 60 * 1000
 NY_TZ        = "America/New_York"
 NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
@@ -145,6 +148,12 @@ h1PreNySurvivor() =>
 [idSrcTime, idSrcHigh, idSrcLow, idSrcVol] = request.security(
      syminfo.tickerid, ID_TF, h1PreNySurvivor(), lookahead = barmerge.lookahead_off)
 
+// Last fully closed H1 candle. Asking for the previous bar with lookahead on
+// is what makes this settle identically on history and in real time, so a
+// candle is judged once, complete.
+[h1Time, h1High, h1Low, h1Vol] = request.security(syminfo.tickerid, ID_TF,
+     [time[1], high[1], low[1], volume[1]], lookahead = barmerge.lookahead_on)
+
 // ────────────────────────────  M OBJECT  ───────────────────────────────
 // An M object is the price region left by the winning H4 candle. It is
 // built over the trim window, then lives on the chart until price touches it.
@@ -157,15 +166,26 @@ type MObject
     float wMin   = na                   // trim window extremes
     float wMax   = na
     bool  active = false                // trimmed and touchable
+    bool  frozen = false                // touched: the box stopped growing,
+                                        // but the region is still watched
     int   expire = na
     box   bx     = na
 
 var array<MObject> mObjects = array.new<MObject>()
 var MObject prov = na                   // winner of the session in progress
-var box   idBox     = na                // ID object of the session in progress
+var box   idBox     = na                // pre-NY ID object of this session
 var float idTop     = na
 var float idBot     = na
 var bool  idTouched = false
+
+var box   nyBox     = na                // NY ID object of this session
+var int   nySrcT    = na
+var float nyTop     = na
+var float nyBot     = na
+var float nyVol     = na
+var float nyMin     = na                // extremes seen after its candle
+var float nyMax     = na
+var bool  nyDone    = false
 
 // ─────────────────────  NEW YORK OPEN DETECTION  ────────────────────────
 // The trim window closes on the first bar at or after 09:30 ET.
@@ -196,13 +216,23 @@ if not na(wTime)
         // an M object on a fraction of the usual volume. Skipped by date.
         sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
 
-        // The ID object belongs to the session that just ended.
+        // Both ID objects belong to the session that just ended.
         if not na(idBox)
             box.delete(idBox)
-            idBox     := na
-            idTop     := na
-            idBot     := na
-            idTouched := false
+        idBox     := na
+        idTop     := na
+        idBot     := na
+        idTouched := false
+        if not na(nyBox)
+            box.delete(nyBox)
+        nyBox  := na
+        nySrcT := na
+        nyTop  := na
+        nyBot  := na
+        nyVol  := na
+        nyMin  := na
+        nyMax  := na
+        nyDone := false
 
         if not na(prov)
             if prov.side != 0 and sessionOk
@@ -261,10 +291,15 @@ if array.size(mObjects) > 0
                 box.set_right(obj.bx, time)
 
         if not drop and obj.active
-            if high >= obj.bot and low <= obj.top
-                // Touched: freeze the box where it happened and stop tracking.
+            if obj.frozen
+                // The box is settled, but the region stays on the books so a
+                // later candle can still be credited with absorbing it.
+                if time >= obj.expire
+                    drop := true
+            else if high >= obj.bot and low <= obj.top
+                // Touched: freeze the box where it happened.
                 box.set_right(obj.bx, time)
-                drop := true
+                obj.frozen := true
             else if time >= obj.expire
                 box.delete(obj.bx)
                 drop := true
@@ -294,6 +329,47 @@ if not na(idBox) and not idTouched
     box.set_right(idBox, time)
     if high >= idBot and low <= idTop
         idTouched := true
+
+// ─────────────────────  NY ID OBJECT LIFECYCLE  ────────────────────────
+// A New York H1 candle qualifies by swallowing an M object whole: its own
+// range reaches above the region's top and below its bottom. Among the
+// candles that did, the highest volume holds the place, so the region moves
+// as the session produces a bigger one. Once price swallows the ID object
+// in turn it freezes there and the session is done with it.
+
+h1Closed = not na(h1Time) and h1Time != h1Time[1]
+
+if not nyDone and h1Closed
+    h1NyMin = hour(h1Time, NY_TZ) * 60 + minute(h1Time, NY_TZ)
+    if h1NyMin >= NY_START_MIN and h1NyMin < NY_END_MIN
+        bool swallowed = false
+        if array.size(mObjects) > 0
+            for i = 0 to array.size(mObjects) - 1
+                o = array.get(mObjects, i)
+                if o.active and h1High >= o.top and h1Low <= o.bot
+                    swallowed := true
+        if swallowed and (na(nyVol) or h1Vol > nyVol)
+            // One region at a time: the previous holder gives up its box.
+            if not na(nyBox)
+                box.delete(nyBox)
+            nySrcT := h1Time
+            nyTop  := h1High
+            nyBot  := h1Low
+            nyVol  := h1Vol
+            nyMin  := na
+            nyMax  := na
+            nyBox  := box.new(h1Time, h1High, time, h1Low,
+                 xloc         = xloc.bar_time,
+                 border_color = idColor,
+                 bgcolor      = color.new(idColor, 85))
+
+if not na(nyBox) and not nyDone
+    box.set_right(nyBox, time)
+    if time >= nySrcT + ID_TF_MS
+        nyMin := na(nyMin) ? low  : math.min(nyMin, low)
+        nyMax := na(nyMax) ? high : math.max(nyMax, high)
+        if nyMin <= nyBot and nyMax >= nyTop
+            nyDone := true
 
 // ──────────────────────────────  WARNINGS  ──────────────────────────────
 
