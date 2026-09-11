@@ -1,13 +1,26 @@
 // ══════════════════════════  MARKET STRUCTURE  ══════════════════════════
-// The second model, a peer of the V objects and unaware of them. It holds
-// the two levels that define the structure and the direction they imply,
-// read on M1 whatever the chart is on.
+// A pattern object, and a peer of the V objects rather than a part of them.
+// It holds the two levels the structure stands on, the direction they
+// imply, and the sequence of points that produced them. Read on M1 whatever
+// the chart is on, and unaware of the V objects: crossing the two is the
+// setup's job, not the model's.
 //
-// There are no pivots and no lookback. The levels fall out of the
-// alternation itself: in an uptrend, the last high the structure made and
-// the floor of the pullback that produced it. Taking the high out confirms
-// a new one and recomputes both. Taking the low out is a change of
-// character, and the structure turns.
+// Candidates are local extremes, one candle either side, no parameter.
+// They are dense on purpose. What thins them out is a level, never a size:
+//
+//   Going up, a candidate high is structural only if it exceeds the last
+//   structural high. Everything that fails to is dropped, however large it
+//   looked, and the structural low of the interval is simply the lowest
+//   candidate low in it. A leg that makes no new high therefore leaves no
+//   marks at all, which is why a clean advance reduces to a single line
+//   between its two ends.
+//
+//   Going down, the mirror.
+//
+// A change of character is price taking a level out: the last structural
+// low while going up, the last structural high while going down. Reaching
+// through it is enough — a wick counts. Requiring a close was tried and
+// read the structure noticeably worse.
 //
 // Read through request.security rather than by splitting chart bars, which
 // keeps the whole history: intrabar requests are capped, a state machine
@@ -17,87 +30,111 @@ STRUCT_TF = "1"
 
 G_STRUCT = "Market Structure"
 
-enableStruct  = input.bool(true, "Enable market structure", group = G_STRUCT,
+enableStruct   = input.bool(true, "Enable market structure", group = G_STRUCT,
      tooltip = "Off publishes nothing: no levels, no direction, no change of character for anything downstream to read.")
-structUpColor = input.color(color.new(color.teal, 0),   "Bullish structure", group = G_STRUCT)
-structDnColor = input.color(color.new(color.maroon, 0), "Bearish structure", group = G_STRUCT)
+showStructPath = input.bool(true,  "Draw the path between points", group = G_STRUCT)
+showStructTags = input.bool(false, "Label the points", group = G_STRUCT)
+structUpColor  = input.color(color.new(color.teal, 0),   "Up",   group = G_STRUCT)
+structDnColor  = input.color(color.new(color.maroon, 0), "Down", group = G_STRUCT)
 
 // ───────────────────────────  THE MACHINE  ──────────────────────────────
+// A qualifying candidate brings in two points at once: itself, and the
+// extreme of the interval it just closed. Both are handed back, in order.
 
 marketStructure() =>
-    var int   dir     = 0               // +1 up, -1 down, 0 until the first break
-    var float hi      = na              // upper level of the structure
-    var float lo      = na              // lower level
-    var float pullH   = na              // extremes reached since those were set
-    var float pullL   = na
-    var int   flips   = 0               // changes of character so far
-    var int   flipDir = 0               // the direction the last one turned to
-    var int   flipT   = na              // and when it happened
+    var int   phase     = 1             // +1 going up, -1 going down
+    var float lastHigh  = na            // the two levels
+    var float lastLow   = na
+    var float pendHigh  = na            // best candidate since the last
+    var int   pendHighT = na            // structural point of the other kind
+    var float pendLow   = na
+    var int   pendLowT  = na
+    var int   ptCount   = 0             // points registered so far
+    var int   chCount   = 0             // changes of character so far
+    var int   chDir     = 0
+    var int   chT       = na
 
-    if na(hi)
-        hi    := high
-        lo    := low
-        pullH := high
-        pullL := low
+    float aP = na                       // the points this candle produced
+    int   aT = na
+    bool  aH = false
+    float bP = na
+    int   bT = na
+    bool  bH = false
 
-    if dir == 0
-        // Undecided until price leaves the range it started in.
-        if high > hi
-            dir   := 1
-            lo    := pullL
-            hi    := high
-            pullL := low
-        else if low < lo
-            dir   := -1
-            hi    := pullH
-            lo    := low
-            pullH := high
-        else
-            pullH := math.max(pullH, high)
-            pullL := math.min(pullL, low)
+    cLow  = low[1]  <  low[0]  and low[1]  <= low[2]
+    cHigh = high[1] >  high[0] and high[1] >= high[2]
 
-    else if dir == 1
-        // Continuation is settled first. On a bar that does both, the new
-        // high is taken and the broken low is left for a later bar to
-        // report — within one M1 candle there is no way to know the order.
-        if high > hi
-            lo    := pullL
-            hi    := high
-            pullL := low
-        else if low < lo
-            // The high that failed stays put and becomes the lower high.
-            dir     := -1
-            lo      := low
-            pullH   := high
-            flips   += 1
-            flipDir := -1
-            flipT   := time
-        else
-            pullL := math.min(pullL, low)
+    if na(lastHigh)
+        lastHigh := high
+        lastLow  := low
 
+    if cLow
+        if na(pendLow) or low[1] < pendLow
+            pendLow  := low[1]
+            pendLowT := time[1]
+    if cHigh
+        if na(pendHigh) or high[1] > pendHigh
+            pendHigh  := high[1]
+            pendHighT := time[1]
+
+    bool takeHigh = false
+    bool takeLow  = false
+
+    if phase == 1
+        if cHigh and high[1] > lastHigh
+            takeHigh := true
+        if low < lastLow
+            phase   := -1
+            chCount += 1
+            chDir   := -1
+            chT     := time
     else
-        if low < lo
-            hi    := pullH
-            lo    := low
-            pullH := high
-        else if high > hi
-            // The low that held stays put and becomes the higher low.
-            dir     := 1
-            hi      := high
-            pullL   := low
-            flips   += 1
-            flipDir := 1
-            flipT   := time
-        else
-            pullH := math.max(pullH, high)
+        if cLow and low[1] < lastLow
+            takeLow := true
+        if high > lastHigh
+            phase   := 1
+            chCount += 1
+            chDir   := 1
+            chT     := time
 
-    [dir, hi, lo, flips, flipDir, flipT]
+    if takeHigh
+        if not na(pendLow)
+            aP      := pendLow
+            aT      := pendLowT
+            aH      := false
+            lastLow := pendLow
+            ptCount += 1
+        bP       := high[1]
+        bT       := time[1]
+        bH       := true
+        lastHigh := high[1]
+        ptCount  += 1
+        pendLow  := na
 
-[structDir, structHi, structLo, structFlips, structFlipDir, structFlipT] =
+    if takeLow
+        if not na(pendHigh)
+            aP       := pendHigh
+            aT       := pendHighT
+            aH       := true
+            lastHigh := pendHigh
+            ptCount  += 1
+        bP       := low[1]
+        bT       := time[1]
+        bH       := false
+        lastLow  := low[1]
+        ptCount  += 1
+        pendHigh := na
+
+    [phase, lastHigh, lastLow, ptCount, aP, aT, aH, bP, bT, bH, chCount, chDir, chT]
+
+[structPhase, structHigh, structLow, structPts,
+     sAP, sAT, sAH, sBP, sBT, sBH,
+     structChCount, structChDir, structChT] =
      request.security(syminfo.tickerid, STRUCT_TF, marketStructure(),
      lookahead = barmerge.lookahead_off)
 
 // What the rest of the script reads. Disabled, the model publishes nothing.
-structOn    = enableStruct and structDir != 0
-structChoch = structOn and structFlips != nz(structFlips[1], 0)
-structColor = structDir > 0 ? structUpColor : structDnColor
+structOn    = enableStruct
+structChoch = structOn and structChCount != nz(structChCount[1], 0)
+structNewPt = structOn and structPts != nz(structPts[1], 0)
+structColor = structPhase > 0 ? structUpColor : structDnColor

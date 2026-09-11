@@ -1,20 +1,47 @@
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
 
 // ──────────────────────  MARKET STRUCTURE  ──────────────────────────────
-// The two levels, held flat until the structure moves them, and a diamond
-// where it turned.
+// The path is drawn as the points arrive. Two can land on the same bar, so
+// they are consumed in order, and each is named against the last of its own
+// kind rather than against its neighbour.
 
-plot(structOn ? structHi : na, "Structure high", color = structColor,
+var float sPrevP  = na
+var int   sPrevT  = na
+var float sPrevHi = na
+var float sPrevLo = na
+
+if structNewPt
+    for slot = 0 to 1
+        float p = slot == 0 ? sAP : sBP
+        int   t = slot == 0 ? sAT : sBT
+        bool  h = slot == 0 ? sAH : sBH
+        if not na(t)
+            if showStructPath and not na(sPrevT)
+                line.new(sPrevT, sPrevP, t, p, xloc = xloc.bar_time,
+                     color = h ? structUpColor : structDnColor, width = 1)
+            if showStructTags
+                string tag = h ? (na(sPrevHi) ? "H" : p > sPrevHi ? "HH" : "LH")
+                     : (na(sPrevLo) ? "L" : p < sPrevLo ? "LL" : "HL")
+                label.new(t, p, tag, xloc = xloc.bar_time,
+                     style     = h ? label.style_label_down : label.style_label_up,
+                     color     = color.new(h ? structDnColor : structUpColor, 20),
+                     textcolor = color.white, size = size.tiny)
+            if h
+                sPrevHi := p
+            else
+                sPrevLo := p
+            sPrevP := p
+            sPrevT := t
+
+plot(structOn ? structHigh : na, "Structure high", color = color.new(structDnColor, 40),
      style = plot.style_stepline, linewidth = 1)
-plot(structOn ? structLo : na, "Structure low",  color = structColor,
+plot(structOn ? structLow : na,  "Structure low",  color = color.new(structUpColor, 40),
      style = plot.style_stepline, linewidth = 1)
 
-// One call per side: plotshape takes a constant location, so the placement
-// cannot be chosen from the direction at runtime.
-plotshape(structChoch and structFlipDir > 0, "Change of character up",
-     shape.diamond, location.belowbar, color = structUpColor, size = size.tiny)
-plotshape(structChoch and structFlipDir < 0, "Change of character down",
-     shape.diamond, location.abovebar, color = structDnColor, size = size.tiny)
+plotshape(structChoch and structChDir > 0, "CHoCH up",
+     shape.triangleup, location.belowbar, color = structUpColor, size = size.small)
+plotshape(structChoch and structChDir < 0, "CHoCH down",
+     shape.triangledown, location.abovebar, color = structDnColor, size = size.small)
 
 // ─────────────────────────────  WARNINGS  ───────────────────────────────
 
@@ -55,9 +82,9 @@ if showDiag and barstate.islast
     diagRow(8,  "ID born",      na(idObj) ? "—" : stamp(idObj.born))
     diagRow(9,  "ID range",     na(idObj) ? "no box" : str.tostring(idObj.bot, format.mintick) + " – " + str.tostring(idObj.top, format.mintick) + "  " + sided(idObj.side))
     diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
-    diagRow(11, "structure",    not structOn ? "off" : (structDir > 0 ? "up" : "down"))
-    diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLo, format.mintick) + " – " + str.tostring(structHi, format.mintick))
-    diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structFlipT) + "  " + (structFlipDir > 0 ? "to up" : structFlipDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structFlips))
+    diagRow(11, "structure",    not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
+    diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
+    diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
 alertcondition(isNewMax, "Node · New daily volume high",
