@@ -20,6 +20,7 @@ NY_END_MIN   = 17 * 60                  // 17:00 ET, session close
 MS_DAY       = 24 * 60 * 60 * 1000
 NY_TZ        = "America/New_York"
 NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
+SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
 
@@ -161,6 +162,28 @@ if array.size(slT) > 0
              year(t, NY_TZ) * 10000 + month(t, NY_TZ) * 100 + dom))
         array.push(slEvt, false)
 
+// ─────────────────────────  SESSION OPENING  ────────────────────────────
+// The exchange session opens at 18:00 ET. Read off the clock rather than
+// from timeframe.change("D"): around a holiday the daily series can run for
+// days without reporting a change, which silently freezes every per-session
+// reset hanging off it — the winner never resets, the pre-New-York window
+// never clears, and objects from the old session stay on the chart.
+//
+// Each call site keeps its own state, so the same function serves both
+// series it is used on.
+
+sessionOpened() =>
+    var int  lastDay = na
+    var bool seen    = false
+    d = dayofmonth(time, NY_TZ)
+    if na(lastDay) or d != lastDay
+        lastDay := d
+        seen    := false
+    fire = not seen and hour(time, NY_TZ) * 60 + minute(time, NY_TZ) >= SESS_OPEN_MIN
+    if fire
+        seen := true
+    fire
+
 // ═══════════════════════════════  M OBJECT  ═════════════════════════════
 // The price region left by the winning H4 candle of a session. Built over
 // its trim window, then alive until price touches it. Publishes
@@ -182,7 +205,7 @@ h4DailyMax() =>
                                         // session's winner is final
     var int lastSessDate = na           // closing day of the session that
                                         // just ended, as YYYYMMDD
-    if timeframe.change("D") or na(mVol)
+    if sessionOpened() or na(mVol)
         dayNum += 1
         lastSessDate := na(time[1]) ? na : year(time[1], NY_TZ) * 10000 + month(time[1], NY_TZ) * 100 + dayofmonth(time[1], NY_TZ)
         mVol   := volume
@@ -359,7 +382,7 @@ h1PreNySurvivor() =>
     var array<bool>  cGone = array.new<bool>()
     var bool inWin = false
 
-    if timeframe.change("D")
+    if sessionOpened()
         inWin := true
         array.clear(cTime)
         array.clear(cHigh)
