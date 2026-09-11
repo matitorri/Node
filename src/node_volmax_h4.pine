@@ -313,11 +313,16 @@ h1PreNySurvivor() =>
         array.push(cMin,  na)
         array.push(cMax,  na)
 
-    // Highest volume among the candles still standing.
+    // Highest volume among the candles still standing, handed back with the
+    // extremes already reached since it closed. The region does not start
+    // untouched at the New York open, and pretending otherwise loses the
+    // half of a swallow that happened before it.
     int   bTime = na
     float bHigh = na
     float bLow  = na
     float bVol  = na
+    float bMin  = na
+    float bMax  = na
     if array.size(cTime) > 0
         for i = 0 to array.size(cTime) - 1
             if not array.get(cGone, i)
@@ -327,9 +332,11 @@ h1PreNySurvivor() =>
                     bTime := array.get(cTime, i)
                     bHigh := array.get(cHigh, i)
                     bLow  := array.get(cLow, i)
-    [bTime, bHigh, bLow, bVol]
+                    bMin  := array.get(cMin, i)
+                    bMax  := array.get(cMax, i)
+    [bTime, bHigh, bLow, bVol, bMin, bMax]
 
-[idSrcTime, idSrcHigh, idSrcLow, idSrcVol] = request.security(
+[idSrcTime, idSrcHigh, idSrcLow, idSrcVol, idSrcMin, idSrcMax] = request.security(
      syminfo.tickerid, ID_TF, h1PreNySurvivor(), lookahead = barmerge.lookahead_off)
 
 // ───────────────────────────  STATE  ────────────────────────────────────
@@ -363,8 +370,8 @@ if enableId and isNyOpenBar and not dayExcluded and not na(idSrcTime)
     idTop     := idSrcHigh
     idBot     := idSrcLow
     idTouched := false
-    idAMin    := na
-    idAMax    := na
+    idAMin    := idSrcMin                // carried over: what price already
+    idAMax    := idSrcMax                // did to the region before the open
     idEaten   := false
     idBox := box.new(idSrcTime, idSrcHigh, time, idSrcLow,
          xloc         = xloc.bar_time,
@@ -381,7 +388,10 @@ if not na(idBox) and not idTouched
 
 // Swallowing is a different matter from being touched, and it keeps being
 // watched after the box settles: an ID object covered end to end during New
-// York arms the NY ID object, exactly as an M object does.
+// York arms the NY ID object, exactly as an M object does. The count runs
+// from the source candle's close, not from the open, because unlike an M
+// object this region reaches 09:30 with no trim to guarantee price has
+// stayed off it.
 if not na(idBox) and not idEaten
     idAMin := na(idAMin) ? low  : math.min(idAMin, low)
     idAMax := na(idAMax) ? high : math.max(idAMax, high)
