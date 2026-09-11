@@ -19,11 +19,20 @@ indicator("Structure lab", overlay = true, max_lines_count = 500, max_labels_cou
 //
 // A change of character is price taking out the level the structure stands
 // on: the last structural low while going up, the last structural high
-// while going down. No parameter there either.
+// while going down.
+//
+// What counts as taking a level out is the one choice here. A wick through
+// it and back is what a liquidity grab looks like, and by the letter of the
+// rule it breaks the level — so the structure turns on a move that went
+// nowhere. Asking for a close beyond the level instead reads the grab as
+// the rejection it was, at the cost of arriving a candle later and of
+// missing a genuine break that happened to leave a long wick.
 //
 // Runs on the chart's own candles. Open it on the timeframe the structure
 // is meant to be read on.
 
+breakByClose = input.bool(true, "A break needs a close beyond the level",
+     tooltip = "Off, a wick through the level is enough. That is the literal reading, and it turns the structure on liquidity grabs. On, the candle has to close beyond it.")
 showCands  = input.bool(false, "Show the candidates underneath")
 showLabels = input.bool(true,  "Label the structural points")
 upColor    = input.color(color.new(color.teal, 0),   "Up")
@@ -35,6 +44,10 @@ dnColor    = input.color(color.new(color.maroon, 0), "Down")
 
 candLow  = low[1]  <  low[0]  and low[1]  <= low[2]
 candHigh = high[1] >  high[0] and high[1] >= high[2]
+
+// Whether a level has been taken out, asked the same way everywhere.
+tookOutUp(float level, int back)   => breakByClose ? close[back] > level : high[back] > level
+tookOutDown(float level, int back) => breakByClose ? close[back] < level : low[back]  < level
 
 plotshape(showCands and candLow,  "Candidate low",  shape.circle,
      location.belowbar, color = color.new(upColor, 60), size = size.tiny, offset = -1)
@@ -74,15 +87,15 @@ bool tookLow  = false
 int  choch    = 0
 
 if phase == 1
-    if candHigh and high[1] > lastHigh
+    if candHigh and tookOutUp(lastHigh, 1)
         tookHigh := true
-    if low < lastLow
+    if tookOutDown(lastLow, 0)
         phase := -1
         choch := -1
 else
-    if candLow and low[1] < lastLow
+    if candLow and tookOutDown(lastLow, 1)
         tookLow := true
-    if high > lastHigh
+    if tookOutUp(lastHigh, 0)
         phase := 1
         choch := 1
 
