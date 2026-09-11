@@ -26,9 +26,9 @@ SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // Groups, in the order they appear in the settings dialog.
 G_COMMON = "Common"
-G_M      = "M Objects"
-G_ID     = "ID Objects"
-G_NY     = "NY ID Object"
+G_M      = "V Objects · M"
+G_ID     = "V Objects · ID"
+G_NY     = "V Objects · NY ID"
 
 excludedInput = input.text_area(
      "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
@@ -187,10 +187,38 @@ sessionOpened() =>
         seen := true
     fire
 
-// ═══════════════════════════════  M OBJECT  ═════════════════════════════
-// The price region left by the winning H4 candle of a session. Built over
-// its trim window, then alive until price touches it. Publishes
-// isNewSession, which the other two objects read.
+// ══════════════════════════════  V OBJECTS  ═════════════════════════════
+// A V object is a price region left behind by a candle that carried the
+// volume, held until price takes the edge its side lives off. Three kinds,
+// differing in the candle they come from and in how long they last:
+//
+//   M object      the session's H4 winner, trimmed, alive for days
+//   ID object     the pre-New-York H1 winner, untrimmed, alive for a day
+//   NY ID object  a New York H1 winner, drawn on an absorption event
+//
+// They share a vocabulary — side, touched, absorbed — and this type. The
+// trim window and the expiry belong to M objects alone; the other two leave
+// those fields untouched.
+
+type VObject
+    int   t      = na                   // source candle open time
+    float top    = na
+    float bot    = na
+    int   side   = 0                    // +1 long, -1 short
+    int   born   = na                   // when its box was drawn
+    bool  frozen = false                // the box stopped growing
+    bool  eaten  = false                // price took the edge its side lives
+                                        // off, so the region is gone
+    bool  active = false                // M only: trimmed and touchable
+    float wMin   = na                   // M only: trim window extremes
+    float wMax   = na
+    int   expire = na                   // M only
+    box   bx     = na
+
+// ─────────────────────────────  M OBJECT  ───────────────────────────────
+// The region left by the winning H4 candle of a session. Built over its
+// trim window, then alive until price touches it. Publishes isNewSession,
+// which the other two read.
 
 // ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
 // Keeps its own state on H4 bars, so the winning candle is the same
@@ -231,23 +259,8 @@ h4DailyMax() =>
 
 // ───────────────────────────  STATE  ────────────────────────────────────
 
-type MObject
-    int   t      = na                   // source candle open time
-    float top    = na
-    float bot    = na
-    int   side   = 0                    // +1 bullish candle, -1 bearish
-    float wMin   = na                   // trim window extremes
-    float wMax   = na
-    bool  active = false                // trimmed and touchable
-    bool  frozen = false                // touched: the box stopped growing,
-                                        // but the region is still watched
-    bool  eaten  = false                // price took the edge its side lives
-                                        // off, so the region is gone
-    int   expire = na
-    box   bx     = na
-
-var array<MObject> mObjects = array.new<MObject>()
-var MObject prov = na                   // winner of the session in progress
+var array<VObject> mObjects = array.new<VObject>()
+var VObject prov = na                   // winner of the session in progress
 var int lastTurnT = na                  // when the session last turned over
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
@@ -278,7 +291,7 @@ if not na(wTime)
                      border_color = markColor,
                      bgcolor      = color.new(markColor, 85))
                 array.push(mObjects, prov)
-        prov := MObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
+        prov := VObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
 
     else if winnerMoved and not na(prov)
         // A later candle took over: move the M object and restart its window.
@@ -365,7 +378,7 @@ if array.size(slT) > 0
                 if drop
                     array.remove(mObjects, i)
 
-// ══════════════════════════════  ID OBJECT  ═════════════════════════════
+// ─────────────────────────────  ID OBJECT  ──────────────────────────────
 // The region left by the highest-volume H1 candle of the window running
 // from the session open to the New York open. Untrimmed, born at the open,
 // frozen on touch, gone with its session.
@@ -442,26 +455,14 @@ h1PreNySurvivor() =>
 
 // ───────────────────────────  STATE  ────────────────────────────────────
 
-var box   idBox     = na                // pre-NY ID object of this session
-var float idTop     = na
-var float idBot     = na
-var bool  idTouched = false             // the box stopped growing
-var int   idSide    = 0                 // of its source candle: which edge
-var bool  idEaten   = false             // losing it means absorbed
-var int   idBornT   = na                // when the box on screen was created
+var VObject idObj = na                  // the one of this session
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
 if isNewSession
-    if not na(idBox)
-        box.delete(idBox)
-    idBox     := na
-    idTop     := na
-    idBot     := na
-    idTouched := false
-    idSide    := 0
-    idEaten   := false
-    idBornT   := na
+    if not na(idObj)
+        box.delete(idObj.bx)
+    idObj := na
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
@@ -477,15 +478,11 @@ if array.size(slT) > 0
         if enableId and array.get(slOpen, k) and not array.get(slSkip, k) and not na(idSrcTime)
             // Whatever stands here goes first. An orphaned box cannot be
             // reached again, and would sit on the chart for good.
-            if not na(idBox)
-                box.delete(idBox)
-            idTop     := idSrcHigh
-            idBot     := idSrcLow
-            idTouched := false
-            idSide    := idSrcSide
-            idEaten   := false
-            idBornT   := sT
-            idBox := box.new(idSrcTime, idSrcHigh, sT, idSrcLow,
+            if not na(idObj)
+                box.delete(idObj.bx)
+            idObj := VObject.new(t = idSrcTime, top = idSrcHigh,
+                 bot = idSrcLow, side = idSrcSide, born = sT)
+            idObj.bx := box.new(idSrcTime, idSrcHigh, sT, idSrcLow,
                  xloc         = xloc.bar_time,
                  border_color = idColor,
                  bgcolor      = color.new(idColor, 85))
@@ -493,23 +490,23 @@ if array.size(slT) > 0
         // Same rule as an M object: the region projects right until price
         // enters it, then the box freezes where that happened. It is removed
         // with its session, touched or not.
-        if not na(idBox) and not idTouched
-            box.set_right(idBox, sT)
-            if sH >= idBot and sL <= idTop
-                idTouched := true
+        if not na(idObj) and not idObj.frozen
+            box.set_right(idObj.bx, sT)
+            if sH >= idObj.bot and sL <= idObj.top
+                idObj.frozen := true
 
         // Absorption is a different matter from being touched, and it keeps
         // being watched after the box settles. A bullish region lives off
         // its low and a bearish one off its high: lose that edge, by a tick,
         // and the region is gone. One absorbed during New York triggers the
         // NY ID object.
-        if not na(idBox) and not idEaten
-            if idSide > 0 ? sL < idBot : sH > idTop
-                idEaten := true
+        if not na(idObj) and not idObj.eaten
+            if idObj.side > 0 ? sL < idObj.bot : sH > idObj.top
+                idObj.eaten := true
                 if sIn
                     array.set(slEvt, k, true)
 
-// ═════════════════════════════  NY ID OBJECT  ═══════════════════════════
+// ───────────────────────────  NY ID OBJECT  ─────────────────────────────
 // Price absorbing an M object or an ID object during New York is an event.
 // Every one of them picks the region again: the highest-volume New York H1
 // candle standing at that instant, the one still forming included, read at
@@ -518,12 +515,9 @@ if array.size(slT) > 0
 
 // ───────────────────────────  STATE  ────────────────────────────────────
 
-var box   nyBox    = na                 // NY ID object of this session
-var int   nyDrawnT = na                 // candle it was taken from
-var float nyTop    = na                 // as drawn, which for a candle still
-var float nyBot    = na                 // forming is not its final range
-var int   nySide   = 0                  // which edge ends it
-var bool  nyDone   = false              // price took that edge
+var VObject nyObj = na                  // the one of this session, its range
+                                        // as drawn, which for a candle still
+                                        // forming is not its final one
 
 // The H1 candle in progress, accumulated from grid slices. request.security
 // cannot hand back an unclosed candle on history, and an unclosed candle is
@@ -547,20 +541,15 @@ var array<bool>  nyGone = array.new<bool>()
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
 if isNewSession
-    if not na(nyBox)
-        box.delete(nyBox)
-    nyBox    := na
-    nyDrawnT := na
-    nyTop    := na
-    nyBot    := na
-    nySide   := 0
-    nyDone   := false
-    curT     := na                      // so the candle straddling the
-    curO     := na                      // turnover is not filed under the
-    curH     := na                      // session that is starting
-    curL     := na
-    curC     := na
-    curV     := na
+    if not na(nyObj)
+        box.delete(nyObj.bx)
+    nyObj := na
+    curT  := na                         // so the candle straddling the
+    curO  := na                         // turnover is not filed under the
+    curH  := na                         // session that is starting
+    curL  := na
+    curC  := na
+    curV  := na
     array.clear(nyT)
     array.clear(nyH)
     array.clear(nyL)
@@ -641,24 +630,22 @@ if array.size(slT) > 0
 
         // Redrawn on every event, and only on an event: a bigger candle
         // closing in between does not take the place on its own.
-        if enableNyId and array.get(slEvt, k) and not nyDone and not array.get(slSkip, k) and not na(bestT)
-            if not na(nyBox)
-                box.delete(nyBox)
-            nyDrawnT := bestT
-            nyTop    := bestH
-            nyBot    := bestL
-            nySide   := bestS
-            nyBox := box.new(bestT, bestH, sT, bestL,
+        if enableNyId and array.get(slEvt, k) and (na(nyObj) or not nyObj.eaten) and not array.get(slSkip, k) and not na(bestT)
+            if not na(nyObj)
+                box.delete(nyObj.bx)
+            nyObj := VObject.new(t = bestT, top = bestH, bot = bestL,
+                 side = bestS, born = sT)
+            nyObj.bx := box.new(bestT, bestH, sT, bestL,
                  xloc         = xloc.bar_time,
                  border_color = nyIdColor,
                  bgcolor      = color.new(nyIdColor, 85))
 
         // Measured against the region as drawn, not against what its source
         // candle went on to become.
-        if not na(nyBox) and not nyDone
-            box.set_right(nyBox, sT)
-            if nySide > 0 ? sL < nyBot : sH > nyTop
-                nyDone := true
+        if not na(nyObj) and not nyObj.eaten
+            box.set_right(nyObj.bx, sT)
+            if nyObj.side > 0 ? sL < nyObj.bot : sH > nyObj.top
+                nyObj.eaten := true
 
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
 
@@ -696,9 +683,9 @@ if showDiag and barstate.islast
     diagRow(5,  "last turnover", stamp(lastTurnT))
     diagRow(6,  "M alive",      str.tostring(array.size(mObjects)))
     diagRow(7,  "ID source",    stamp(idSrcTime) + "  " + sided(idSrcSide))
-    diagRow(8,  "ID born",      stamp(idBornT))
-    diagRow(9,  "ID range",     na(idBox) ? "no box" : str.tostring(idBot, format.mintick) + " – " + str.tostring(idTop, format.mintick) + "  " + sided(idSide))
-    diagRow(10, "ID state",     na(idBox) ? "—" : (idTouched ? "touched" : "live") + (idEaten ? " · absorbed" : ""))
+    diagRow(8,  "ID born",      na(idObj) ? "—" : stamp(idObj.born))
+    diagRow(9,  "ID range",     na(idObj) ? "no box" : str.tostring(idObj.bot, format.mintick) + " – " + str.tostring(idObj.top, format.mintick) + "  " + sided(idObj.side))
+    diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
 alertcondition(isNewMax, "Node · New daily volume high",
