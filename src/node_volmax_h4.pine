@@ -153,7 +153,10 @@ if array.size(slT) > 0
         if na(lastNyDay) or dom != lastNyDay
             nyOpenSeen := false
             lastNyDay  := dom
-        isOpen = not nyOpenSeen and mins >= NY_OPEN_MIN
+        // Bounded at both ends. Without the upper bound a Sunday reopen at
+        // 18:00 ET counts as an opening, since it is the first trade of that
+        // New York day and sits well past 09:30.
+        isOpen = not nyOpenSeen and mins >= NY_OPEN_MIN and mins < NY_END_MIN
         if isOpen
             nyOpenSeen := true
         array.push(slOpen, isOpen)
@@ -472,6 +475,10 @@ if array.size(slT) > 0
         // Born at the New York open from the highest-volume H1 candle of the
         // pre-NY window that price did not absorb. No trim.
         if enableId and array.get(slOpen, k) and not array.get(slSkip, k) and not na(idSrcTime)
+            // Whatever stands here goes first. An orphaned box cannot be
+            // reached again, and would sit on the chart for good.
+            if not na(idBox)
+                box.delete(idBox)
             idTop     := idSrcHigh
             idBot     := idSrcLow
             idTouched := false
