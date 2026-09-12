@@ -1,29 +1,9 @@
 // ═══════════════════════════════  PORTFOLIO  ════════════════════════════
-// The last word: how much, and whether at all. It reads the intention the
-// strategy published and turns it into an order, or refuses it.
-//
-// Two blocks, kept apart because they answer different questions and are
-// told different things:
-//
-//   Risk management — how much this position may lose, and therefore how
-//   large it may be. It is shown one trade and nothing else.
-//
-//   Position manager — whether this one may be opened at all. It is shown
-//   the book and the day, and never sizes anything.
-//
-// Neither reaches into the other. A change in how risk is taken leaves the
-// gates alone, and a new gate leaves the sizing alone.
-//
-// This is the only layer besides the strategy that the indicator does not
-// share. There are no positions to manage in an indicator.
+// How much, and whether at all. Strategy only: an indicator has no book.
+// Two blocks that never reach into each other. See docs/portfolio.md.
 
 // ────────────────────────  RISK MANAGEMENT  ─────────────────────────────
-// It reads one thing from the strategy: the distance from the entry to the
-// stop. From that and a budget it answers with a number of contracts.
-//
-// It does not know what is already open, how the day has gone, or how many
-// trades have been taken. None of that changes what a single position may
-// lose, and letting it in here would put the same rule in two places.
+// Shown one trade and nothing else: the stop distance and a budget.
 
 G_RISK = "Portfolio · Risk management"
 
@@ -43,21 +23,17 @@ equityMode = input.string(EQ_CURRENT, "Measured against", options = [EQ_CURRENT,
 maxContracts = input.int(10, "Contracts ceiling", minval = 1, group = G_RISK,
      tooltip = "A hard maximum, applied after the budget has spoken. It never raises a size, only caps one.")
 
-// The account the budget is a share of.
 riskEquity = equityMode == EQ_INITIAL ? strategy.initial_capital : strategy.equity
 
-// What this position is allowed to lose, in account currency.
 riskBudget = riskMode == RISK_FIXED ? riskQty : riskEquity * riskQty / 100.0
 
-// What one contract loses if the stop is reached. A point of price is worth
-// syminfo.pointvalue, so the instrument and the distance together fix it and
-// nothing here is specific to one symbol.
+// A point of price is worth syminfo.pointvalue, so nothing here is
+// specific to one symbol.
 riskPerContract = na(tradeEntry) or na(tradeStop) ? na : math.abs(tradeEntry - tradeStop) * syminfo.pointvalue
 
-// Always down. Rounding up would quietly spend more than the budget just
-// declared, which is the one thing this block exists to prevent. A budget
-// that does not cover a single contract therefore means no position rather
-// than a smaller one: there is nothing smaller than one contract.
+// Always down. Rounding up would spend more than the budget just declared,
+// and a budget short of one contract means no position: there is nothing
+// smaller than one contract.
 int riskSize = 0
 if not na(riskPerContract) and riskPerContract > 0
     riskSize := int(math.floor(riskBudget / riskPerContract))
@@ -65,21 +41,8 @@ if not na(riskPerContract) and riskPerContract > 0
         riskSize := maxContracts
 
 // ────────────────────────  POSITION MANAGER  ────────────────────────────
-// Whether this one may be opened, read off the book and the day rather than
-// off the trade. It never sizes anything and never looks at where the stop
-// is: given the same book it answers the same, whatever the signal was.
-//
-// Three gates. One is about room — a signal arriving while the book is full
-// is ignored, not queued and not stacked on what is running. One is about
-// the day: a count of trades closed since the session opened, against a
-// limit on each side. Reaching either limit ends the day, and only the
-// session opening brings it back. The last is the clock, and the hours are
-// the shared ones, so the setup and this block can never disagree on when
-// the system is at work.
-//
-// Counting trades rather than money is deliberate. It bounds the day at a
-// known number of attempts regardless of what each one was worth, and the
-// longest day the defaults allow is two.
+// Shown the book and the day, never the trade. Three gates, all on
+// opening rather than on holding.
 
 maxOpen = input.int(1, "Positions at a time", minval = 1, group = G_PM,
      tooltip = "A signal that arrives with the book already this full is ignored. It is not remembered: nothing is taken later on its behalf.")
@@ -88,15 +51,13 @@ lossCut = input.int(2, "Losing trades that end the day", minval = 0, group = G_P
 winCut  = input.int(1, "Winning trades that end the day", minval = 0, group = G_PM,
      tooltip = "The same on the other side: the day can be ended by going well, not only by going badly. Zero turns the cut off.")
 
-// What the session has closed so far. Profit is net of commission, so a
-// trade scratched to the tick lands on the losing side rather than in a
-// third category that neither cut would ever see.
+// Profit is net of commission, so a trade scratched to the tick lands on
+// the losing side rather than in a third category neither cut would see.
 var int pmWins   = 0
 var int pmLosses = 0
 
-// How far into the trade list the count has already reached. Cumulative
-// over the whole backtest, so unlike the two above it does not reset: a
-// session turnover clears the tally, never the reading position.
+// The cursor into the closed-trade list. Cumulative over the backtest, so
+// unlike the tally it is never reset: that would count old trades again.
 var int pmRead = 0
 
 if isNewSession
@@ -118,15 +79,9 @@ pmDayOver = (lossCut > 0 and pmLosses >= lossCut) or (winCut > 0 and pmWins >= w
 pmBarMin  = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
 pmInHours = pmBarMin >= tradingFrom and pmBarMin < tradingTo
 
-// The one thing this block publishes. A position already running is left
-// alone when the day ends or the hours close: the gate is on opening, not
-// on holding.
 pmAllows = pmInHours and not pmDayOver and strategy.opentrades < maxOpen
 
 // ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
-// The rows the shared table cannot carry, because the indicator has no book
-// and no money at stake. Appended to the same table, below the last row the
-// shared section wrote.
 
 if showDiag and barstate.islast
     diagRow(16, "hours",      (pmInHours ? "in" : "out") + "   " + clock(tradingFrom) + " – " + clock(tradingTo))

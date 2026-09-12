@@ -1,26 +1,11 @@
 // ════════════════════════════════  SETUP  ═══════════════════════════════
-// The context. It holds or it does not, and it can hold for hours.
-//
-// What it publishes is not a verdict but the V object in play — the region
-// the signal will be judged against — or nothing. That is what lets one
-// signal serve every setup: the setup chooses what to look at, the signal
-// only asks whether it fired.
-//
-// Each setup declares what it needs from the model, so one that cannot run
-// says so in the diagnostics instead of quietly never firing.
+// Publishes the V object in play, not a verdict. See docs/setup.md.
 
 var VObject setupObj  = na              // the region in play, or none
 string      setupName = ""              // which setup put it there
 bool        setupTook = false           // it took one on this bar
 
 // ─────────────────────────  M TOUCH  ────────────────────────────────────
-// Price entering an M object puts that region in play. A later touch on a
-// different one takes its place: the most recent is the one being traded.
-//
-// It lets go when the region stops existing — price absorbs it, or it
-// expires untouched — or when the session turns over. Not when a target is
-// reached: the setup sits above the strategy and cannot see a position.
-// Keeping a second trade from opening while one is live belongs down there.
 
 G_SETUPS = "Setups"
 
@@ -30,24 +15,18 @@ enableMSetup = input.bool(true, "Enable the M touch setup", group = G_SETUPS,
 mSetupReady = enableMSetup and enableM   // what it needs from the model
 
 // ─────────────────────────  TRADING HOURS  ──────────────────────────────
-// When the system is allowed to work. More than one layer obeys it — this
-// setup will not arm a region outside the hours, so a touch at three in the
-// morning cannot sit there waiting to fire at ten, and the position manager
-// will not open outside them either — so it is declared once and read by
-// both. It belongs to neither, which is why it carries the position
-// manager's group rather than this one's.
-//
-// It sits here for a reason that is only about the settings dialog: Pine
-// places a group where its first input appears, and declared any earlier
-// the whole Portfolio section would open above the model.
+// Read by this setup and by the position manager, so it is declared once
+// and carries the position manager's group. It sits here rather than
+// earlier only so the Portfolio section does not open above the model in
+// the settings dialog.
 
 G_PM = "Portfolio · Position management"
 
 tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
      tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
-// The session string reads "0930-1700", so the two ends sit at fixed offsets
-// whatever day mask may follow them.
+// The session string reads "0930-1700": fixed offsets, whatever day mask
+// may follow them.
 hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
 
 tradingFrom = hhmm(str.substring(tradingHours, 0, 4))
@@ -60,7 +39,8 @@ if array.size(slT) > 0
     for k = 0 to array.size(slT) - 1
         sT = array.get(slT, k)
 
-        // Let go of a region that no longer exists.
+        // Let go of a region that no longer exists. Never on a target: the
+        // setup cannot see a position.
         if not na(setupObj)
             if setupObj.eaten or sT >= setupObj.expire
                 setupObj := na

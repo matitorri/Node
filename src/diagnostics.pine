@@ -1,24 +1,17 @@
 // ═════════════════════════════  DIAGNOSTICS  ════════════════════════════
-// A reading of the state behind the drawings, so a disagreement between the
-// chart and the code can be settled by looking rather than by inference.
-//
-// Shared, because most of what it reports is shared: the feeds, the grid,
-// the objects, the setup and the signal all exist in both scripts. What is
-// not shared appends to the same table further down — the strategy's book
-// has rows of its own, and the indicator has no book to give them.
-//
-// Row numbers are fixed rather than running, so a section can add rows
-// without knowing what any other section did.
+// Shared, and appended to by the portfolio. Row numbers are fixed rather
+// than running, so a section can add rows without knowing what another
+// did; a row nobody fills is never drawn. See docs/diagnostics.md.
 
 stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
 sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
+// Pine's integer division yields a float, so the hour is floored rather
+// than left to a format string to round.
 clock(int m) =>
     h  = math.floor(m / 60)
     mm = m % 60
     (h < 10 ? "0" : "") + str.tostring(h) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm)
 
-// Sized for every section that could write into it. A row nobody fills is
-// never drawn: the table is made of the cells that exist, not of its bounds.
 var table diag = table.new(position.top_right, 2, 24, border_width = 1,
      frame_width = 1, frame_color = color.gray)
 

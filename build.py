@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Assemble the pasteable scripts from their parts.
 
-The model is written once, in src/model.pine, and both scripts are built
-around it. Edit src/, run this, paste from dist/.
+Edit src/, run this, paste from dist/. See docs/architecture.md.
 
     python3 build.py
 """

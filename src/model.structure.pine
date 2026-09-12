@@ -1,30 +1,5 @@
 // ══════════════════════════  MARKET STRUCTURE  ══════════════════════════
-// A pattern object, and a peer of the V objects rather than a part of them.
-// It holds the two levels the structure stands on, the direction they
-// imply, and the sequence of points that produced them. Read on M1 whatever
-// the chart is on, and unaware of the V objects: crossing the two is the
-// setup's job, not the model's.
-//
-// Candidates are local extremes, one candle either side, no parameter.
-// They are dense on purpose. What thins them out is a level, never a size:
-//
-//   Going up, a candidate high is structural only if it exceeds the last
-//   structural high. Everything that fails to is dropped, however large it
-//   looked, and the structural low of the interval is simply the lowest
-//   candidate low in it. A leg that makes no new high therefore leaves no
-//   marks at all, which is why a clean advance reduces to a single line
-//   between its two ends.
-//
-//   Going down, the mirror.
-//
-// A change of character is price taking a level out: the last structural
-// low while going up, the last structural high while going down. Reaching
-// through it is enough — a wick counts. Requiring a close was tried and
-// read the structure noticeably worse.
-//
-// Read through request.security rather than by splitting chart bars, which
-// keeps the whole history: intrabar requests are capped, a state machine
-// running on the M1 series is not.
+// See docs/market-structure.md.
 
 STRUCT_TF = "1"
 
@@ -38,8 +13,11 @@ structUpColor  = input.color(color.new(color.teal, 0),   "Up",   group = G_STRUC
 structDnColor  = input.color(color.new(color.maroon, 0), "Down", group = G_STRUCT)
 
 // ───────────────────────────  THE MACHINE  ──────────────────────────────
-// A qualifying candidate brings in two points at once: itself, and the
-// extreme of the interval it just closed. Both are handed back, in order.
+// Candidates are local extremes, one candle either side. What thins them
+// out is a level, never a size: going up, a candidate high counts only if
+// it exceeds the last structural high, and the interval's lowest candidate
+// low comes with it. Going down, the mirror. A qualifying candidate
+// therefore brings in two points at once, handed back in order.
 
 marketStructure() =>
     var int   phase     = 1             // +1 going up, -1 going down
@@ -80,6 +58,8 @@ marketStructure() =>
     bool takeHigh = false
     bool takeLow  = false
 
+    // A change of character is price reaching through a level. A wick is
+    // enough: requiring a close was tried and read the structure worse.
     if phase == 1
         if cHigh and high[1] > lastHigh
             takeHigh := true

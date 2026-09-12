@@ -1,10 +1,7 @@
-//@version=6
-
 strategy("Node - v0.16.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // ════════════════════════════════  SHARED  ══════════════════════════════
-// Constants, inputs, the evaluation grid and the clock the three objects
-// read. Nothing here belongs to one of them alone.
+// See docs/shared.md.
 
 // ─────────────────────────────  CONSTANTS  ──────────────────────────────
 
@@ -23,18 +20,6 @@ NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
 SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
-
-// Groups in the settings dialog. Pine has no nesting, so the tree is spelled
-// out in the names and held by the order: a group appears where its first
-// input is declared, which is why each one is named beside the block that
-// owns it and why the blocks are laid out in the order they should read.
-//
-//   Common
-//   Objects · V objects
-//   Objects · Pattern objects
-//   Setups
-//   Portfolio · Position management
-//   Portfolio · Risk management
 
 G_COMMON = "Common"
 G_V      = "Objects · V objects"
@@ -60,8 +45,6 @@ enableNyId   = input.bool(true, "Enable NY ID object", group = G_V)
 nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_V)
 
 // ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
-// The skip list, parsed once into YYYYMMDD numbers. Separators and any
-// punctuation in the dates are stripped, so 2025-11-28 and 20251128 both work.
 
 var array<int> excludedDates = array.new<int>()
 if barstate.isfirst
@@ -74,11 +57,7 @@ if barstate.isfirst
             array.push(excludedDates, int(num))
 
 // ──────────────────────────  EVALUATION GRID  ───────────────────────────
-// Every judgement below — the clock, a touch, an absorption, a New York
-// candle — is made on five-minute slices instead of on chart bars, so a
-// session produces the same objects whatever timeframe is on screen.
-// Charts coarser than the grid are split into their five-minute intrabars;
-// finer ones are gathered into five-minute buckets and read out whole.
+// Coarser charts are split into five-minute intrabars, finer ones bucketed.
 
 coarse = timeframe.in_seconds() > 300
 evalTf = coarse ? EVAL_TF : timeframe.period
@@ -135,11 +114,6 @@ else
         bkT := na
 
 // ─────────────────────────  NEW YORK CLOCK  ─────────────────────────────
-// Resolved per slice. slOpen marks the first slice at or past 09:30 ET,
-// which closes an M object's trim window and gives birth to an ID object.
-// slInNy covers the New York stretch, slSkip the sessions named in the list.
-// slEvt is raised by whichever object price absorbs, and read by the NY ID
-// object: a pulse per slice, not a latch held for the session.
 
 var array<bool> slOpen = array.new<bool>()
 var array<bool> slInNy = array.new<bool>()
@@ -163,8 +137,7 @@ if array.size(slT) > 0
             nyOpenSeen := false
             lastNyDay  := dom
         // Bounded at both ends. Without the upper bound a Sunday reopen at
-        // 18:00 ET counts as an opening, since it is the first trade of that
-        // New York day and sits well past 09:30.
+        // 18:00 ET counts as an opening: first trade of that New York day.
         isOpen = not nyOpenSeen and mins >= NY_OPEN_MIN and mins < NY_END_MIN
         if isOpen
             nyOpenSeen := true
@@ -175,15 +148,10 @@ if array.size(slT) > 0
         array.push(slEvt, false)
 
 // ─────────────────────────  SESSION OPENING  ────────────────────────────
-// The exchange session opens at 18:00 ET. Read off the clock rather than
-// from timeframe.change("D"): around a holiday the daily series can run for
-// days without reporting a change, which silently freezes every per-session
-// reset hanging off it — the winner never resets, the pre-New-York window
-// never clears, and objects from the old session stay on the chart.
-//
-// Each call site keeps its own state, so the same function serves both
-// series it is used on.
 
+// Read off the clock. timeframe.change("D") can run for days without
+// reporting a change around a holiday, which freezes every reset hanging
+// off it. Each call site keeps its own state.
 sessionOpened() =>
     var int  lastDay = na
     var bool seen    = false
@@ -197,17 +165,7 @@ sessionOpened() =>
     fire
 
 // ══════════════════════════════  V OBJECTS  ═════════════════════════════
-// A V object is a price region left behind by a candle that carried the
-// volume, held until price takes the edge its side lives off. Three kinds,
-// differing in the candle they come from and in how long they last:
-//
-//   M object      the session's H4 winner, trimmed, alive for days
-//   ID object     the pre-New-York H1 winner, untrimmed, alive for a day
-//   NY ID object  a New York H1 winner, drawn on an absorption event
-//
-// They share a vocabulary — side, touched, absorbed — and this type. The
-// trim window and the expiry belong to M objects alone; the other two leave
-// those fields untouched.
+// See docs/v-objects.md.
 
 type VObject
     int   t      = na                   // source candle open time
@@ -216,8 +174,7 @@ type VObject
     int   side   = 0                    // +1 long, -1 short
     int   born   = na                   // when its box was drawn
     bool  frozen = false                // the box stopped growing
-    bool  eaten  = false                // price took the edge its side lives
-                                        // off, so the region is gone
+    bool  eaten  = false                // the far edge is gone, so is the region
     bool  active = false                // M only: trimmed and touchable
     float wMin   = na                   // M only: trim window extremes
     float wMax   = na
@@ -225,13 +182,8 @@ type VObject
     box   bx     = na
 
 // ─────────────────────────────  M OBJECT  ───────────────────────────────
-// The region left by the winning H4 candle of a session. Built over its
-// trim window, then alive until price touches it. Publishes isNewSession,
-// which the other two read.
 
 // ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
-// Keeps its own state on H4 bars, so the winning candle is the same
-// whether the chart is on M1 or on H4.
 
 h4DailyMax() =>
     var float mVol   = na
@@ -240,11 +192,8 @@ h4DailyMax() =>
     var float mHigh  = na
     var float mLow   = na
     var float mClose = na
-    var int   dayNum = 0                // increments once per session, used
-                                        // by the chart side to know when a
-                                        // session's winner is final
-    var int lastSessDate = na           // closing day of the session that
-                                        // just ended, as YYYYMMDD
+    var int   dayNum = 0                // increments once per session
+    var int lastSessDate = na           // the session that just ended, YYYYMMDD
     if sessionOpened() or na(mVol)
         dayNum += 1
         lastSessDate := na(time[1]) ? na : year(time[1], NY_TZ) * 10000 + month(time[1], NY_TZ) * 100 + dayofmonth(time[1], NY_TZ)
@@ -272,14 +221,11 @@ var array<VObject> mObjects = array.new<VObject>()
 var VObject prov = na                   // winner of the session in progress
 var int lastTurnT = na                  // when the session last turned over
 
-// Which M object price entered on each slice, if any. Published because the
-// touch is an event the setup layer waits on, and only the lifecycle below
-// is in a position to see it happen.
+// Which M object price entered on each slice, if any. Only the lifecycle
+// below is in a position to see it happen, so it publishes it.
 var array<VObject> slTouch = array.new<VObject>()
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
-// Driven by the H4 feed rather than by the grid, since that is what decides
-// when a session's winner is final.
 
 isNewSession = dayNum != nz(dayNum[1], 0)
 winnerMoved  = wTime != wTime[1]
@@ -290,11 +236,8 @@ if not na(wTime)
     if isNewSession
         lastTurnT := time
 
-        // The previous session is closed, so its winner is final. Only now
-        // does the M object get drawn: while the session is running the
-        // winner can still change hands, and the region cannot be used yet.
-        // Holiday half sessions still open a daily bar, so they would produce
-        // an M object on a fraction of the usual volume. Skipped by date.
+        // The winner is final only now: while the session ran it could still
+        // change hands. Half sessions trade too little for theirs to mean much.
         sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
 
         if not na(prov)
@@ -308,7 +251,6 @@ if not na(wTime)
         prov := VObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
 
     else if winnerMoved and not na(prov)
-        // A later candle took over: move the M object and restart its window.
         prov.t    := wTime
         prov.top  := wHigh
         prov.bot  := wLow
@@ -329,10 +271,6 @@ if array.size(slT) > 0
         sOp  = array.get(slOpen, k)
         sIn  = array.get(slInNy, k)
 
-        // The trim window opens at the close of the source candle, which
-        // happens well before the session ends, so it is measured while the
-        // winner is still provisional and carried over when the M object is
-        // created. Nothing is drawn during this stage.
         if not na(prov)
             if sT >= prov.t + TF_MS
                 prov.wMin := na(prov.wMin) ? sL : math.min(prov.wMin, sL)
@@ -345,13 +283,11 @@ if array.size(slT) > 0
 
                 if not obj.active
                     if sOp
-                        // Window closed. What survives is the part of the M
-                        // object price never visited, on the side the candle
-                        // came from.
+                        // Window closed. What survives is the part price never
+                        // visited, on the side the candle came from.
                         float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
                         float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
                         if newTop <= newBot
-                            // Fully absorbed.
                             box.delete(obj.bx)
                             drop := true
                         else
@@ -367,12 +303,9 @@ if array.size(slT) > 0
 
                 if not drop and obj.active
                     if obj.frozen
-                        // The box is settled, but the region stays on the
-                        // books so price can still be caught absorbing it.
                         if sT >= obj.expire
                             drop := true
                     else if sH >= obj.bot and sL <= obj.top
-                        // Touched: freeze the box where it happened.
                         box.set_right(obj.bx, sT)
                         obj.frozen := true
                         array.set(slTouch, k, obj)
@@ -382,11 +315,8 @@ if array.size(slT) > 0
                     else
                         box.set_right(obj.bx, sT)
 
-                // The trim already leaves price on the side the candle came
-                // from, so the edge that ends the region is the far one: a
-                // bullish region dies on its low, a bearish one on its high.
-                // Absorbed during New York, it triggers the NY ID object,
-                // and so does an ID object going the same way.
+                // The far edge: a bullish region dies on its low, a bearish one
+                // on its high. Absorbed during New York, it fires slEvt.
                 if not drop and obj.active and not obj.eaten
                     if obj.side > 0 ? sL < obj.bot : sH > obj.top
                         obj.eaten := true
@@ -397,15 +327,8 @@ if array.size(slT) > 0
                     array.remove(mObjects, i)
 
 // ─────────────────────────────  ID OBJECT  ──────────────────────────────
-// The region left by the highest-volume H1 candle of the window running
-// from the session open to the New York open. Untrimmed, born at the open,
-// frozen on touch, gone with its session.
 
 // ──────────  PRE-NEW-YORK SURVIVOR (runs on the H1 series)  ────────────
-// Every H1 candle of the window is kept until price absorbs it. The winner
-// is the highest-volume candle still standing, so being absorbed hands the
-// place to the next one down. Dojis are never candidates: with no side
-// there is no edge to lose.
 
 h1PreNySurvivor() =>
     var array<int>   cTime = array.new<int>()
@@ -426,14 +349,10 @@ h1PreNySurvivor() =>
         array.clear(cGone)
 
     nyMin = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
-    // The window closes on the first candle that would run past 09:30 ET.
-    // Evening candles sit above 12:00 ET, so they cannot close it early.
     if inWin and nyMin < 720 and nyMin + ID_TF_MIN > NY_OPEN_MIN
         inWin := false
 
     if inWin
-        // Age the candles already stored before adding this one, so a candle
-        // is never measured against its own range.
         if array.size(cTime) > 0
             for i = 0 to array.size(cTime) - 1
                 if not array.get(cGone, i)
@@ -448,9 +367,6 @@ h1PreNySurvivor() =>
             array.push(cSide, candleSide)
             array.push(cGone, false)
 
-    // Highest volume among the candles still standing. The winner reaches
-    // the open un-absorbed by construction: one that had lost its edge would
-    // already have dropped out.
     int   bTime = na
     float bHigh = na
     float bLow  = na
@@ -491,11 +407,9 @@ if array.size(slT) > 0
         sL  = array.get(slL, k)
         sIn = array.get(slInNy, k)
 
-        // Born at the New York open from the highest-volume H1 candle of the
-        // pre-NY window that price did not absorb. No trim.
         if enableId and array.get(slOpen, k) and not array.get(slSkip, k) and not na(idSrcTime)
-            // Whatever stands here goes first. An orphaned box cannot be
-            // reached again, and would sit on the chart for good.
+            // Whatever stands here goes first: an orphaned box can never be
+            // reached again and would sit on the chart for good.
             if not na(idObj)
                 box.delete(idObj.bx)
             idObj := VObject.new(t = idSrcTime, top = idSrcHigh,
@@ -505,19 +419,11 @@ if array.size(slT) > 0
                  border_color = idColor,
                  bgcolor      = color.new(idColor, 85))
 
-        // Same rule as an M object: the region projects right until price
-        // enters it, then the box freezes where that happened. It is removed
-        // with its session, touched or not.
         if not na(idObj) and not idObj.frozen
             box.set_right(idObj.bx, sT)
             if sH >= idObj.bot and sL <= idObj.top
                 idObj.frozen := true
 
-        // Absorption is a different matter from being touched, and it keeps
-        // being watched after the box settles. A bullish region lives off
-        // its low and a bearish one off its high: lose that edge, by a tick,
-        // and the region is gone. One absorbed during New York triggers the
-        // NY ID object.
         if not na(idObj) and not idObj.eaten
             if idObj.side > 0 ? sL < idObj.bot : sH > idObj.top
                 idObj.eaten := true
@@ -525,21 +431,15 @@ if array.size(slT) > 0
                     array.set(slEvt, k, true)
 
 // ───────────────────────────  NY ID OBJECT  ─────────────────────────────
-// Price absorbing an M object or an ID object during New York is an event.
-// Every one of them picks the region again: the highest-volume New York H1
-// candle standing at that instant, the one still forming included, read at
-// whatever it has reached by then. Between events nothing moves. It ends
-// when price absorbs the region in turn, and the session gives no more.
+// Redrawn on an absorption event, and only then. See docs/v-objects.md.
 
 // ───────────────────────────  STATE  ────────────────────────────────────
 
-var VObject nyObj = na                  // the one of this session, its range
-                                        // as drawn, which for a candle still
-                                        // forming is not its final one
+var VObject nyObj = na                  // the one of this session, as drawn
 
-// The H1 candle in progress, accumulated from grid slices. request.security
-// cannot hand back an unclosed candle on history, and an unclosed candle is
-// exactly what may have to be picked.
+// The H1 candle in progress, accumulated from slices: request.security
+// cannot hand back an unclosed candle on history, and an unclosed candle
+// is exactly what may have to be picked.
 var int   curT = na
 var float curO = na
 var float curH = na
@@ -547,8 +447,6 @@ var float curL = na
 var float curC = na
 var float curV = na
 
-// Every New York H1 candle that has closed, dropped once price takes the
-// edge its side lives off, so an absorbed one stays out of the choice.
 var array<int>   nyT    = array.new<int>()
 var array<float> nyH    = array.new<float>()
 var array<float> nyL    = array.new<float>()
@@ -587,8 +485,6 @@ if array.size(slT) > 0
         sV = array.get(slV, k)
 
         if na(curT) or math.floor(sT / ID_TF_MS) != math.floor(curT / ID_TF_MS)
-            // The candle that just ended joins the closed ones, unless it
-            // closed a doji and so has no edge to lose.
             if not na(curT)
                 endedSide  = curC > curO ? 1 : curC < curO ? -1 : 0
                 endedNyMin = hour(curT, NY_TZ) * 60 + minute(curT, NY_TZ)
@@ -611,15 +507,12 @@ if array.size(slT) > 0
             curC := sC
             curV := curV + nz(sV)
 
-        // Age the closed ones, so an absorbed candle cannot be chosen later.
         if array.size(nyT) > 0
             for i = 0 to array.size(nyT) - 1
                 if not array.get(nyGone, i) and sT >= array.get(nyT, i) + ID_TF_MS
                     if array.get(nySd, i) > 0 ? sL < array.get(nyL, i) : sH > array.get(nyH, i)
                         array.set(nyGone, i, true)
 
-        // Highest volume among the candles still standing, the one in
-        // progress included at whatever volume it has reached.
         int   bestT = na
         float bestH = na
         float bestL = na
@@ -646,8 +539,8 @@ if array.size(slT) > 0
                 bestL := curL
                 bestS := curSide
 
-        // Redrawn on every event, and only on an event: a bigger candle
-        // closing in between does not take the place on its own.
+        // A bigger candle closing between events does not take the place on
+        // its own: it takes it at the next event.
         if enableNyId and array.get(slEvt, k) and (na(nyObj) or not nyObj.eaten) and not array.get(slSkip, k) and not na(bestT)
             if not na(nyObj)
                 box.delete(nyObj.bx)
@@ -658,40 +551,13 @@ if array.size(slT) > 0
                  border_color = nyIdColor,
                  bgcolor      = color.new(nyIdColor, 85))
 
-        // Measured against the region as drawn, not against what its source
-        // candle went on to become.
         if not na(nyObj) and not nyObj.eaten
             box.set_right(nyObj.bx, sT)
             if nyObj.side > 0 ? sL < nyObj.bot : sH > nyObj.top
                 nyObj.eaten := true
 
 // ══════════════════════════  MARKET STRUCTURE  ══════════════════════════
-// A pattern object, and a peer of the V objects rather than a part of them.
-// It holds the two levels the structure stands on, the direction they
-// imply, and the sequence of points that produced them. Read on M1 whatever
-// the chart is on, and unaware of the V objects: crossing the two is the
-// setup's job, not the model's.
-//
-// Candidates are local extremes, one candle either side, no parameter.
-// They are dense on purpose. What thins them out is a level, never a size:
-//
-//   Going up, a candidate high is structural only if it exceeds the last
-//   structural high. Everything that fails to is dropped, however large it
-//   looked, and the structural low of the interval is simply the lowest
-//   candidate low in it. A leg that makes no new high therefore leaves no
-//   marks at all, which is why a clean advance reduces to a single line
-//   between its two ends.
-//
-//   Going down, the mirror.
-//
-// A change of character is price taking a level out: the last structural
-// low while going up, the last structural high while going down. Reaching
-// through it is enough — a wick counts. Requiring a close was tried and
-// read the structure noticeably worse.
-//
-// Read through request.security rather than by splitting chart bars, which
-// keeps the whole history: intrabar requests are capped, a state machine
-// running on the M1 series is not.
+// See docs/market-structure.md.
 
 STRUCT_TF = "1"
 
@@ -705,8 +571,11 @@ structUpColor  = input.color(color.new(color.teal, 0),   "Up",   group = G_STRUC
 structDnColor  = input.color(color.new(color.maroon, 0), "Down", group = G_STRUCT)
 
 // ───────────────────────────  THE MACHINE  ──────────────────────────────
-// A qualifying candidate brings in two points at once: itself, and the
-// extreme of the interval it just closed. Both are handed back, in order.
+// Candidates are local extremes, one candle either side. What thins them
+// out is a level, never a size: going up, a candidate high counts only if
+// it exceeds the last structural high, and the interval's lowest candidate
+// low comes with it. Going down, the mirror. A qualifying candidate
+// therefore brings in two points at once, handed back in order.
 
 marketStructure() =>
     var int   phase     = 1             // +1 going up, -1 going down
@@ -747,6 +616,8 @@ marketStructure() =>
     bool takeHigh = false
     bool takeLow  = false
 
+    // A change of character is price reaching through a level. A wick is
+    // enough: requiring a close was tried and read the structure worse.
     if phase == 1
         if cHigh and high[1] > lastHigh
             takeHigh := true
@@ -807,28 +678,13 @@ structNewPt = structOn and structPts != nz(structPts[1], 0)
 structColor = structPhase > 0 ? structUpColor : structDnColor
 
 // ════════════════════════════════  SETUP  ═══════════════════════════════
-// The context. It holds or it does not, and it can hold for hours.
-//
-// What it publishes is not a verdict but the V object in play — the region
-// the signal will be judged against — or nothing. That is what lets one
-// signal serve every setup: the setup chooses what to look at, the signal
-// only asks whether it fired.
-//
-// Each setup declares what it needs from the model, so one that cannot run
-// says so in the diagnostics instead of quietly never firing.
+// Publishes the V object in play, not a verdict. See docs/setup.md.
 
 var VObject setupObj  = na              // the region in play, or none
 string      setupName = ""              // which setup put it there
 bool        setupTook = false           // it took one on this bar
 
 // ─────────────────────────  M TOUCH  ────────────────────────────────────
-// Price entering an M object puts that region in play. A later touch on a
-// different one takes its place: the most recent is the one being traded.
-//
-// It lets go when the region stops existing — price absorbs it, or it
-// expires untouched — or when the session turns over. Not when a target is
-// reached: the setup sits above the strategy and cannot see a position.
-// Keeping a second trade from opening while one is live belongs down there.
 
 G_SETUPS = "Setups"
 
@@ -838,24 +694,18 @@ enableMSetup = input.bool(true, "Enable the M touch setup", group = G_SETUPS,
 mSetupReady = enableMSetup and enableM   // what it needs from the model
 
 // ─────────────────────────  TRADING HOURS  ──────────────────────────────
-// When the system is allowed to work. More than one layer obeys it — this
-// setup will not arm a region outside the hours, so a touch at three in the
-// morning cannot sit there waiting to fire at ten, and the position manager
-// will not open outside them either — so it is declared once and read by
-// both. It belongs to neither, which is why it carries the position
-// manager's group rather than this one's.
-//
-// It sits here for a reason that is only about the settings dialog: Pine
-// places a group where its first input appears, and declared any earlier
-// the whole Portfolio section would open above the model.
+// Read by this setup and by the position manager, so it is declared once
+// and carries the position manager's group. It sits here rather than
+// earlier only so the Portfolio section does not open above the model in
+// the settings dialog.
 
 G_PM = "Portfolio · Position management"
 
 tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
      tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
-// The session string reads "0930-1700", so the two ends sit at fixed offsets
-// whatever day mask may follow them.
+// The session string reads "0930-1700": fixed offsets, whatever day mask
+// may follow them.
 hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
 
 tradingFrom = hhmm(str.substring(tradingHours, 0, 4))
@@ -868,7 +718,8 @@ if array.size(slT) > 0
     for k = 0 to array.size(slT) - 1
         sT = array.get(slT, k)
 
-        // Let go of a region that no longer exists.
+        // Let go of a region that no longer exists. Never on a target: the
+        // setup cannot see a position.
         if not na(setupObj)
             if setupObj.eaten or sT >= setupObj.expire
                 setupObj := na
@@ -885,50 +736,26 @@ if not na(setupObj)
     setupName := "M touch"
 
 // ════════════════════════════════  SIGNAL  ══════════════════════════════
-// The trigger, inside a valid setup. Instantaneous, where the setup is a
-// standing condition.
-//
-// It is the change of character the structure model publishes, and it is
-// the same for every setup — which is why it lives here and not inside
-// one. Two things qualify it:
-//
-//   There has to be a region in play. A change of character with no setup
-//   holding is a fact about the market, not a signal.
-//
-//   Its direction has to agree with that region's side. An M object that
-//   came from a bullish candle is demand, and the setup is a reversion to
-//   it, so only a turn upwards on it means anything.
-//
-// Nothing expires. While the setup holds the region, a change of character
-// hours after the touch still counts.
-//
-// The structure section already marks the raw change of character. This is
-// the qualified one, and the strategy is what draws it.
+// A change of character qualified by the setup: there has to be a region
+// in play, and the turn has to agree with its side. See docs/signal.md.
 
 signalFired = structChoch and not na(setupObj) and structChDir == setupObj.side
 signalDir   = structChDir
 
 // ═════════════════════════════  DIAGNOSTICS  ════════════════════════════
-// A reading of the state behind the drawings, so a disagreement between the
-// chart and the code can be settled by looking rather than by inference.
-//
-// Shared, because most of what it reports is shared: the feeds, the grid,
-// the objects, the setup and the signal all exist in both scripts. What is
-// not shared appends to the same table further down — the strategy's book
-// has rows of its own, and the indicator has no book to give them.
-//
-// Row numbers are fixed rather than running, so a section can add rows
-// without knowing what any other section did.
+// Shared, and appended to by the portfolio. Row numbers are fixed rather
+// than running, so a section can add rows without knowing what another
+// did; a row nobody fills is never drawn. See docs/diagnostics.md.
 
 stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
 sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
+// Pine's integer division yields a float, so the hour is floored rather
+// than left to a format string to round.
 clock(int m) =>
     h  = math.floor(m / 60)
     mm = m % 60
     (h < 10 ? "0" : "") + str.tostring(h) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm)
 
-// Sized for every section that could write into it. A row nobody fills is
-// never drawn: the table is made of the cells that exist, not of its bounds.
 var table diag = table.new(position.top_right, 2, 24, border_width = 1,
      frame_width = 1, frame_color = color.gray)
 
@@ -957,53 +784,20 @@ if showDiag and barstate.islast
     diagRow(15, "signal",        not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
 
 // ═══════════════════════════════  STRATEGY  ═════════════════════════════
-// What to do about it: which way, where in, where out. One trade idea, and
-// nothing about money — how large the position may be is decided below,
-// where the rest of the book is visible.
-//
-// It publishes an intention, not an order:
-//
-//   tradeDir     +1 long, -1 short, 0 nothing to do on this bar
-//   tradeEntry   the price it wants in at
-//   tradeStop    where the idea is wrong
-//   tradeTarget  where it is done
-//
-// Several strategies could sit on the same setup and the same signal and
-// differ only in those four, which is why the boundary is kept.
-//
-// Empty until the first one is specified.
+// An intention, not an order. Empty until one is specified.
+// See docs/strategy.md.
 
-int   tradeDir    = 0
+int   tradeDir    = 0                   // +1 long, -1 short, 0 nothing
 float tradeEntry  = na
-float tradeStop   = na
+float tradeStop   = na                  // where the idea is wrong
 float tradeTarget = na
 
 // ═══════════════════════════════  PORTFOLIO  ════════════════════════════
-// The last word: how much, and whether at all. It reads the intention the
-// strategy published and turns it into an order, or refuses it.
-//
-// Two blocks, kept apart because they answer different questions and are
-// told different things:
-//
-//   Risk management — how much this position may lose, and therefore how
-//   large it may be. It is shown one trade and nothing else.
-//
-//   Position manager — whether this one may be opened at all. It is shown
-//   the book and the day, and never sizes anything.
-//
-// Neither reaches into the other. A change in how risk is taken leaves the
-// gates alone, and a new gate leaves the sizing alone.
-//
-// This is the only layer besides the strategy that the indicator does not
-// share. There are no positions to manage in an indicator.
+// How much, and whether at all. Strategy only: an indicator has no book.
+// Two blocks that never reach into each other. See docs/portfolio.md.
 
 // ────────────────────────  RISK MANAGEMENT  ─────────────────────────────
-// It reads one thing from the strategy: the distance from the entry to the
-// stop. From that and a budget it answers with a number of contracts.
-//
-// It does not know what is already open, how the day has gone, or how many
-// trades have been taken. None of that changes what a single position may
-// lose, and letting it in here would put the same rule in two places.
+// Shown one trade and nothing else: the stop distance and a budget.
 
 G_RISK = "Portfolio · Risk management"
 
@@ -1023,21 +817,17 @@ equityMode = input.string(EQ_CURRENT, "Measured against", options = [EQ_CURRENT,
 maxContracts = input.int(10, "Contracts ceiling", minval = 1, group = G_RISK,
      tooltip = "A hard maximum, applied after the budget has spoken. It never raises a size, only caps one.")
 
-// The account the budget is a share of.
 riskEquity = equityMode == EQ_INITIAL ? strategy.initial_capital : strategy.equity
 
-// What this position is allowed to lose, in account currency.
 riskBudget = riskMode == RISK_FIXED ? riskQty : riskEquity * riskQty / 100.0
 
-// What one contract loses if the stop is reached. A point of price is worth
-// syminfo.pointvalue, so the instrument and the distance together fix it and
-// nothing here is specific to one symbol.
+// A point of price is worth syminfo.pointvalue, so nothing here is
+// specific to one symbol.
 riskPerContract = na(tradeEntry) or na(tradeStop) ? na : math.abs(tradeEntry - tradeStop) * syminfo.pointvalue
 
-// Always down. Rounding up would quietly spend more than the budget just
-// declared, which is the one thing this block exists to prevent. A budget
-// that does not cover a single contract therefore means no position rather
-// than a smaller one: there is nothing smaller than one contract.
+// Always down. Rounding up would spend more than the budget just declared,
+// and a budget short of one contract means no position: there is nothing
+// smaller than one contract.
 int riskSize = 0
 if not na(riskPerContract) and riskPerContract > 0
     riskSize := int(math.floor(riskBudget / riskPerContract))
@@ -1045,21 +835,8 @@ if not na(riskPerContract) and riskPerContract > 0
         riskSize := maxContracts
 
 // ────────────────────────  POSITION MANAGER  ────────────────────────────
-// Whether this one may be opened, read off the book and the day rather than
-// off the trade. It never sizes anything and never looks at where the stop
-// is: given the same book it answers the same, whatever the signal was.
-//
-// Three gates. One is about room — a signal arriving while the book is full
-// is ignored, not queued and not stacked on what is running. One is about
-// the day: a count of trades closed since the session opened, against a
-// limit on each side. Reaching either limit ends the day, and only the
-// session opening brings it back. The last is the clock, and the hours are
-// the shared ones, so the setup and this block can never disagree on when
-// the system is at work.
-//
-// Counting trades rather than money is deliberate. It bounds the day at a
-// known number of attempts regardless of what each one was worth, and the
-// longest day the defaults allow is two.
+// Shown the book and the day, never the trade. Three gates, all on
+// opening rather than on holding.
 
 maxOpen = input.int(1, "Positions at a time", minval = 1, group = G_PM,
      tooltip = "A signal that arrives with the book already this full is ignored. It is not remembered: nothing is taken later on its behalf.")
@@ -1068,15 +845,13 @@ lossCut = input.int(2, "Losing trades that end the day", minval = 0, group = G_P
 winCut  = input.int(1, "Winning trades that end the day", minval = 0, group = G_PM,
      tooltip = "The same on the other side: the day can be ended by going well, not only by going badly. Zero turns the cut off.")
 
-// What the session has closed so far. Profit is net of commission, so a
-// trade scratched to the tick lands on the losing side rather than in a
-// third category that neither cut would ever see.
+// Profit is net of commission, so a trade scratched to the tick lands on
+// the losing side rather than in a third category neither cut would see.
 var int pmWins   = 0
 var int pmLosses = 0
 
-// How far into the trade list the count has already reached. Cumulative
-// over the whole backtest, so unlike the two above it does not reset: a
-// session turnover clears the tally, never the reading position.
+// The cursor into the closed-trade list. Cumulative over the backtest, so
+// unlike the tally it is never reset: that would count old trades again.
 var int pmRead = 0
 
 if isNewSession
@@ -1098,15 +873,9 @@ pmDayOver = (lossCut > 0 and pmLosses >= lossCut) or (winCut > 0 and pmWins >= w
 pmBarMin  = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
 pmInHours = pmBarMin >= tradingFrom and pmBarMin < tradingTo
 
-// The one thing this block publishes. A position already running is left
-// alone when the day ends or the hours close: the gate is on opening, not
-// on holding.
 pmAllows = pmInHours and not pmDayOver and strategy.opentrades < maxOpen
 
 // ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
-// The rows the shared table cannot carry, because the indicator has no book
-// and no money at stake. Appended to the same table, below the last row the
-// shared section wrote.
 
 if showDiag and barstate.islast
     diagRow(16, "hours",      (pmInHours ? "in" : "out") + "   " + clock(tradingFrom) + " – " + clock(tradingTo))

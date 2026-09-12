@@ -1,9 +1,9 @@
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
 
 // ──────────────────────  MARKET STRUCTURE  ──────────────────────────────
-// The path is drawn as the points arrive. Two can land on the same bar, so
-// they are consumed in order, and each is named against the last of its own
-// kind rather than against its neighbour.
+// Two points can land on the same bar, so they are consumed in order, and
+// each is named against the last of its own kind, not against its
+// neighbour.
 
 var float sPrevP  = na
 var int   sPrevT  = na
@@ -38,14 +38,13 @@ plot(structOn ? structHigh : na, "Structure high", color = color.new(structDnCol
 plot(structOn ? structLow : na,  "Structure low",  color = color.new(structUpColor, 40),
      style = plot.style_stepline, linewidth = 1)
 
+// Two calls, not one: plotshape's location argument has to be const.
 plotshape(structChoch and structChDir > 0, "CHoCH up",
      shape.triangleup, location.belowbar, color = structUpColor, size = size.small)
 plotshape(structChoch and structChDir < 0, "CHoCH down",
      shape.triangledown, location.abovebar, color = structDnColor, size = size.small)
 
 // ──────────────────────────────  SETUP  ─────────────────────────────────
-// Where a region came into play, so a trade can be read back to the moment
-// the context opened.
 
 plotshape(setupTook, "Setup took a region", shape.square, location.top,
      color = color.new(color.yellow, 20), size = size.tiny)
