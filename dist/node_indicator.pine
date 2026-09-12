@@ -825,8 +825,8 @@ G_M_SETUP = "Setup · M touch"
 
 enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
      tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
-mSetupHours  = input.session("0930-1700", "Trading hours", group = G_M_SETUP,
-     tooltip = "New York time. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
+mSetupHours  = input.session("0930-1700", "Trading hours · New York time", group = G_M_SETUP,
+     tooltip = "New York time, not the chart's timezone. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
 mSetupReady = enableMSetup and enableM   // what it needs from the model
 
