@@ -28,6 +28,10 @@ def build(kind: str) -> Path:
     names = (f"{kind}.head", *SHARED, *OWN[kind])
     parts = [SRC / f"{name}.pine" for name in names]
     body = "\n\n".join(p.read_text().strip("\n") for p in parts) + "\n"
+    # The version pragma is a comment, so anything that sweeps comments can
+    # take it with it and the artifact silently compiles as Pine v1.
+    if not body.startswith("//@version=6\n"):
+        raise SystemExit(f"{kind}: the artifact does not open with //@version=6")
     out = DIST / f"node_{kind}.pine"
     out.write_text(body)
     return out
