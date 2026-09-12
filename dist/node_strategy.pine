@@ -730,19 +730,27 @@ tradingTo   = hhmm(str.substring(tradingHours, 5, 9))
 if isNewSession
     setupObj := na
 
+// Let go of a region that no longer exists. Never on a target: the setup
+// cannot see a position.
+//
+// Read on the bar, not on the grid. A slice is published once every five
+// minutes, so on an M1 chart the region would stay in play for four more
+// after price took the edge it lives off, and a change of character inside
+// that window would trade something already gone.
+if not na(setupObj)
+    gone = setupObj.side > 0 ? low < setupObj.bot : high > setupObj.top
+    if setupObj.eaten or gone or time >= setupObj.expire
+        setupObj := na
+
 if array.size(slT) > 0
     for k = 0 to array.size(slT) - 1
-        sT = array.get(slT, k)
-
-        // Let go of a region that no longer exists. Never on a target: the
-        // setup cannot see a position.
-        if not na(setupObj)
-            if setupObj.eaten or sT >= setupObj.expire
-                setupObj := na
-
         if mSetupReady
+            // An absorbed region is never taken. Price on its way out of one
+            // is inside it, so the slice that kills a region also reports a
+            // touch on it.
             VObject hit = array.get(slTouch, k)
-            if not na(hit)
+            if not na(hit) and not hit.eaten
+                sT   = array.get(slT, k)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
                 if mins >= tradingFrom and mins < tradingTo
                     if na(setupObj) or setupObj.t != hit.t

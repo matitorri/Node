@@ -18,7 +18,17 @@ Price entering an M object puts that region in play. A later touch on a
 different one takes its place: the most recent is the one being traded.
 
 It lets go when the region stops existing — price absorbs it, or it
-expires untouched — or when the session turns over.
+expires untouched — or when the session turns over. Everything downstream
+goes with it: no region, no signal, no order.
+
+That release is read on the **bar**, not on the grid. A slice is published
+once every five minutes, so on an M1 chart a region would stay in play for
+four more after price took the edge it lives off, and a change of
+character inside that window traded something already gone.
+
+And an absorbed region is never taken up again. Price on its way out of a
+region is inside it, so the slice that kills one also reports a touch on
+it; without that guard the setup re-armed on the corpse.
 
 It does **not** let go when a target is reached. The setup sits above the
 strategy and cannot see a position. Keeping a second trade from opening
