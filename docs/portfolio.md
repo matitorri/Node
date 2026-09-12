@@ -58,6 +58,23 @@ than one contract.
 **The ceiling** is a hard maximum applied after the budget has spoken. It
 never raises a size, only caps one.
 
+### What the account can carry
+
+The budget knows the stop distance and nothing else, so it will happily
+ask for a size the account cannot margin. The broker emulator then refuses
+the order without a word: the diagnostics read a size and the book stays
+flat.
+
+At a 5% margin one MNQ contract at 29,500 ties up about $2,950, so a
+$50,000 account carries **sixteen** of them. A contracts ceiling above
+that is decoration — the margin binds first.
+
+The `margin` row reports what the order would need against what the
+account has, and says `REFUSED` with the number it could afford when the
+two do not fit. The margin percentage there mirrors the `strategy()`
+declaration; Pine cannot read that back, so the number lives in two
+places.
+
 ### Where the risk is set
 
 In **Inputs → Portfolio · Risk management → Amount**, and nowhere else.

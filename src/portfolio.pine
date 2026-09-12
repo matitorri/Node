@@ -40,6 +40,19 @@ if not na(riskPerContract) and riskPerContract > 0
     if riskSize > maxContracts
         riskSize := maxContracts
 
+// What the account can actually carry, which the budget knows nothing about.
+// A size the margin cannot cover is refused by the broker emulator without a
+// word: the diagnostics read a size and the book stays flat.
+//
+// The percentage mirrors margin_long and margin_short in the declaration at
+// the top of the script. Pine cannot read those back, so the number lives in
+// two places; change both or neither.
+MARGIN_PCT = 5.0
+
+marginPerContract = close * syminfo.pointvalue * MARGIN_PCT / 100.0
+marginAffords     = marginPerContract > 0 ? int(math.floor(strategy.equity / marginPerContract)) : 0
+marginNeeds       = riskSize * marginPerContract
+
 // ────────────────────────  POSITION MANAGER  ────────────────────────────
 // Shown the book and the day, never the trade. Three gates on opening,
 // and one rule about holding: nothing is carried past the hours.
@@ -118,4 +131,5 @@ if showDiag and barstate.islast
     diagRow(25, "session W/L", str.tostring(pmWins) + " / " + str.tostring(pmLosses))
     diagRow(26, "day",        not pmDayOver ? "open" : pmWins >= winCut and winCut > 0 ? "closed · won" : "closed · lost")
     diagRow(27, "allows",     pmAllows ? "yes" : not pmInHours ? "no · outside hours" : pmDayOver ? "no · day is over" : "no · book is full")
+    diagRow(29, "margin",     riskSize == 0 ? "—" : str.tostring(marginNeeds, "#.##") + " of " + str.tostring(strategy.equity, "#.##") + (riskSize > marginAffords ? "   REFUSED · affords " + str.tostring(marginAffords) : ""))
     diagRow(28, "position",   strategy.position_size == 0 ? "flat" : (strategy.position_size > 0 ? "long " : "short ") + str.tostring(math.abs(strategy.position_size)) + " @ " + str.tostring(strategy.position_avg_price, format.mintick))
