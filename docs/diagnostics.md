@@ -15,7 +15,7 @@ standing on.
 |---|---|
 | 0–2 | the chart, how the grid is being fed, the bar |
 | 3–5 | what the H4 feed thinks the session is |
-| 6–10 | the objects |
+| 6–10 | the objects, M objects listed by range, side and state |
 | 11–13 | the structure and its last change of character |
 | 14–15 | the setup and the signal |
 | 16–19 | the day's range and the strategy's intention — strategy only |

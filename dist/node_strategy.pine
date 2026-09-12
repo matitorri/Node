@@ -828,13 +828,21 @@ diagRow(int r, string k, string v) =>
          text_halign = text.align_left, bgcolor = color.new(color.black, 85))
 
 if showDiag and barstate.islast
+    // Where the M objects actually are. A count says two and the chart shows
+    // one, and there is no way to tell which region a setup took.
+    string mList = ""
+    if array.size(mObjects) > 0
+        for i = 0 to array.size(mObjects) - 1
+            o = array.get(mObjects, i)
+            mList := mList + (i > 0 ? "    " : "") + str.tostring(o.bot, format.mintick) + "–" + str.tostring(o.top, format.mintick) + " " + sided(o.side) + (not o.active ? " trimming" : o.frozen ? " touched" : " live") + (o.eaten ? " · absorbed" : "")
+
     diagRow(0,  "chart",         timeframe.period + (coarse ? "  split" : "  bucketed"))
     diagRow(1,  "slices / bar",  str.tostring(array.size(slT)))
     diagRow(2,  "bar",           stamp(time) + "   session " + str.tostring(sessionDay(time)) + (array.includes(excludedDates, sessionDay(time)) ? " · SKIPPED" : "") + "   " + str.tostring(array.size(excludedDates)) + " listed")
     diagRow(3,  "H4 dayNum",     str.tostring(dayNum) + (isNewSession ? "   turning" : ""))
     diagRow(4,  "H4 sess date",  na(lastSessDate) ? "—" : str.tostring(lastSessDate))
     diagRow(5,  "last turnover", stamp(lastTurnT))
-    diagRow(6,  "M alive",       str.tostring(array.size(mObjects)))
+    diagRow(6,  "M alive",       str.tostring(array.size(mObjects)) + (mList == "" ? "" : "   " + mList))
     diagRow(7,  "ID source",     stamp(idSrcTime) + "  " + sided(idSrcSide))
     diagRow(8,  "ID born",       na(idObj) ? "—" : stamp(idObj.born))
     diagRow(9,  "ID range",      na(idObj) ? "no box" : str.tostring(idObj.bot, format.mintick) + " – " + str.tostring(idObj.top, format.mintick) + "  " + sided(idObj.side))
