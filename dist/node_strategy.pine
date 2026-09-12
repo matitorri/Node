@@ -387,7 +387,12 @@ if array.size(slT) > 0
                         // object's only chance to arm a setup on its first touch,
                         // whatever hour that was.
                         inside = sH >= obj.bot and sL <= obj.top
-                        if inside
+
+                        // One region per slice, and when price is inside two
+                        // it is the most recent that is traded. The list is
+                        // walked from the end, so the first one to claim the
+                        // slot is the newest and keeps it.
+                        if inside and na(array.get(slTouch, k))
                             array.set(slTouch, k, obj)
 
                         if obj.frozen
