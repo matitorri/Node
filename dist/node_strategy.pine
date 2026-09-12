@@ -381,26 +381,33 @@ if array.size(slT) > 0
                         box.set_right(obj.bx, sT)
 
                     if not drop and obj.active
-                        // Being inside the region is the event, and it is published
-                        // every slice it holds. Freezing the box is a drawing
-                        // matter and happens once; tying the two together spent an
-                        // object's only chance to arm a setup on its first touch,
-                        // whatever hour that was.
                         inside = sH >= obj.bot and sL <= obj.top
 
-                        // One region per slice, and when price is inside two
-                        // it is the most recent that is traded. The list is
-                        // walked from the end, so the first one to claim the
-                        // slot is the newest and keeps it.
-                        if inside and na(array.get(slTouch, k))
-                            array.set(slTouch, k, obj)
-
                         if obj.frozen
+                            // Touched, and with that done. The box ended there
+                            // because the region did: it offers itself to no
+                            // setup again. It stays on the books only so price
+                            // can still be caught absorbing it, which is what
+                            // the NY ID object waits on.
                             if sT >= obj.expire
                                 drop := true
                         else if inside
+                            // The touch, published once, on the same transition
+                            // the box draws — so what the chart shows and what
+                            // the setup reads are one fact rather than two.
+                            //
+                            // Published every slice it held instead, a region
+                            // wide enough to contain the day went on arming the
+                            // setup for as long as it lived, with its box
+                            // finished days earlier.
+                            //
+                            // When price enters two at once the newest claims
+                            // the slot, which is why the list is walked from
+                            // the end.
                             box.set_right(obj.bx, sT)
                             obj.frozen := true
+                            if na(array.get(slTouch, k))
+                                array.set(slTouch, k, obj)
                         else if sT >= obj.expire
                             box.delete(obj.bx)
                             drop := true

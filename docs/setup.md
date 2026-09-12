@@ -44,14 +44,21 @@ character at ten.
 ## The touch channel
 
 The touch is an event, and only the M object's lifecycle is in a position
-to see it happen — it is the code walking the slices while price is in
-the region. It publishes `slTouch`, one entry per grid slice, holding the
-object price is inside on that slice or nothing.
+to see it happen. It publishes `slTouch`, one entry per grid slice, holding
+the region price entered on that slice or nothing. When price enters two at
+once the newest claims the slot.
 
-It is published for as long as price holds the region, not once. Freezing
-the box is a separate, one-time drawing matter, and while the two were
-tied together an M object had exactly one chance to arm a setup — its
-first touch ever. A touch at three in the morning, rejected by the
-trading hours, spent it; so did a touch on a day the setup then let go of
-at the session turnover. Either way the region went on living for days
-without ever being tradable again.
+It is published **once**, on the same transition that ends the region's box.
+A region that has been touched is done: it offers itself to no setup again,
+and stays on the books only so price can still be caught absorbing it.
+
+Publishing it every slice price held the region was tried, to keep a touch
+outside the trading hours from spending a region. An M object is as wide as
+the H4 candle it came from, and one wide enough to contain the whole day's
+range then went on arming the setup for as long as it lived — with its box
+finished days earlier. The chart said the region had ended; the model
+carried on using it. One fact, drawn one way and read another.
+
+The problem it was meant to solve is gone anyway: a region is not touchable
+between 18:00 and the next New York open, so a touch at three in the
+morning cannot happen at all.

@@ -23,10 +23,13 @@ to M objects alone.
 demand region, a bearish one supply. Dojis have no side and are never
 candidates: with no side there is no edge to lose.
 
-**Touched** means price is inside the region. The first time it happens
-the box stops projecting to the right and freezes there, but the region
-stays on the books and every later visit counts as a touch too — the
-frozen box is a drawing, not a state the region has left.
+**Touched** means price entered the region, and it happens once. The box
+stops projecting to the right there because the region ends there: it is
+offered to no setup again. It stays on the books only so price can still
+be caught absorbing it, which is what a NY ID object waits on.
+
+The box and the touch are the same fact. Anything that reads one and draws
+the other will eventually disagree with itself, and did.
 
 **Absorbed** means price took the edge the region lives off — a bullish
 region dies on its low, a bearish one on its high. Strictly: by a tick,
