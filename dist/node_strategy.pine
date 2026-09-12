@@ -2,14 +2,15 @@
 
 // Futures are margined, and the broker emulator is not: left alone it wants
 // the whole notional in cash, which one MNQ contract already exceeds, and
-// every order is rejected without a word. Five percent is about what CME
-// asks overnight; set it to your broker's in Properties.
+// every order is rejected without a word. Two percent is fifty to one, which
+// is what a broker's day margin on a micro looks like. MARGIN_PCT in the
+// portfolio mirrors this number; change both or neither.
 // Every order carries its own qty, sized by risk management, so Properties'
 // default order size is never read. Declared in contracts anyway: left at a
 // percentage of equity it reads like a second risk setting, and changing it
 // does nothing.
 strategy("Node - v0.17.0-dev", overlay = true, initial_capital = 50000,
-     margin_long = 5, margin_short = 5,
+     margin_long = 2, margin_short = 2,
      default_qty_type = strategy.fixed, default_qty_value = 1,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
@@ -970,7 +971,7 @@ if not na(riskPerContract) and riskPerContract > 0
 // The percentage mirrors margin_long and margin_short in the declaration at
 // the top of the script. Pine cannot read those back, so the number lives in
 // two places; change both or neither.
-MARGIN_PCT = 5.0
+MARGIN_PCT = 2.0
 
 marginPerContract = close * syminfo.pointvalue * MARGIN_PCT / 100.0
 marginAffords     = marginPerContract > 0 ? int(math.floor(strategy.equity / marginPerContract)) : 0

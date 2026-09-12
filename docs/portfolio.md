@@ -32,13 +32,12 @@ than left to TradingView's million-dollar default, so a percentage budget
 means something the first time the script is pasted. It can still be
 overridden in the script's Properties tab.
 
-The same call declares a **5% margin** on both sides. Futures are
-margined and the broker emulator is not: left alone it asks for the whole
-notional in cash, and one MNQ contract at 29,500 is already $59,000 of
-notional against a $50,000 account. Every order is then rejected without
-a word — the diagnostics say the size was five and the book stays flat.
-Five percent is about what CME asks overnight; a broker's day margin is
-usually lower.
+The same call declares a **2% margin** on both sides, which is fifty to
+one. Futures are margined and the broker emulator is not: left alone it
+asks for the whole notional in cash, and one MNQ contract at 29,500 is
+already $59,000 of notional against a $50,000 account. Every order is
+then rejected without a word — the diagnostics say the size was five and
+the book stays flat.
 
 **The equity** is either the current equity, which compounds — the
 position grows after a win and shrinks after a loss — or the initial
@@ -65,9 +64,9 @@ ask for a size the account cannot margin. The broker emulator then refuses
 the order without a word: the diagnostics read a size and the book stays
 flat.
 
-At a 5% margin one MNQ contract at 29,500 ties up about $2,950, so a
-$50,000 account carries **sixteen** of them. A contracts ceiling above
-that is decoration — the margin binds first.
+At a 2% margin — fifty to one — one MNQ contract at 29,500 ties up about
+$1,180, so a $50,000 account carries **forty-two** of them. Raise the risk
+enough and the margin still binds before the contracts ceiling does.
 
 The `margin` row reports what the order would need against what the
 account has, and says `REFUSED` with the number it could afford when the

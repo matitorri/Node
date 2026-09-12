@@ -47,7 +47,7 @@ if not na(riskPerContract) and riskPerContract > 0
 // The percentage mirrors margin_long and margin_short in the declaration at
 // the top of the script. Pine cannot read those back, so the number lives in
 // two places; change both or neither.
-MARGIN_PCT = 5.0
+MARGIN_PCT = 2.0
 
 marginPerContract = close * syminfo.pointvalue * MARGIN_PCT / 100.0
 marginAffords     = marginPerContract > 0 ? int(math.floor(strategy.equity / marginPerContract)) : 0
