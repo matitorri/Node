@@ -50,8 +50,9 @@ if array.size(slT) > 0
             if not na(hit)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
                 if mins >= tradingFrom and mins < tradingTo
-                    setupObj  := hit
-                    setupTook := true
+                    if na(setupObj) or setupObj.t != hit.t
+                        setupTook := true
+                    setupObj := hit
 
 if not na(setupObj)
     setupName := "M touch"

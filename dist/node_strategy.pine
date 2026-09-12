@@ -304,13 +304,21 @@ if array.size(slT) > 0
                         box.set_right(obj.bx, sT)
 
                 if not drop and obj.active
+                    // Being inside the region is the event, and it is published
+                    // every slice it holds. Freezing the box is a drawing
+                    // matter and happens once; tying the two together spent an
+                    // object's only chance to arm a setup on its first touch,
+                    // whatever hour that was.
+                    inside = sH >= obj.bot and sL <= obj.top
+                    if inside
+                        array.set(slTouch, k, obj)
+
                     if obj.frozen
                         if sT >= obj.expire
                             drop := true
-                    else if sH >= obj.bot and sL <= obj.top
+                    else if inside
                         box.set_right(obj.bx, sT)
                         obj.frozen := true
-                        array.set(slTouch, k, obj)
                     else if sT >= obj.expire
                         box.delete(obj.bx)
                         drop := true
@@ -731,8 +739,9 @@ if array.size(slT) > 0
             if not na(hit)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
                 if mins >= tradingFrom and mins < tradingTo
-                    setupObj  := hit
-                    setupTook := true
+                    if na(setupObj) or setupObj.t != hit.t
+                        setupTook := true
+                    setupObj := hit
 
 if not na(setupObj)
     setupName := "M touch"

@@ -34,6 +34,14 @@ character at ten.
 ## The touch channel
 
 The touch is an event, and only the M object's lifecycle is in a position
-to see it happen — it is the code walking the slices when price enters
+to see it happen — it is the code walking the slices while price is in
 the region. It publishes `slTouch`, one entry per grid slice, holding the
-object entered on that slice or nothing.
+object price is inside on that slice or nothing.
+
+It is published for as long as price holds the region, not once. Freezing
+the box is a separate, one-time drawing matter, and while the two were
+tied together an M object had exactly one chance to arm a setup — its
+first touch ever. A touch at three in the morning, rejected by the
+trading hours, spent it; so did a touch on a day the setup then let go of
+at the session turnover. Either way the region went on living for days
+without ever being tradable again.
