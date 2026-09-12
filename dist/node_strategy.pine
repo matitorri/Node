@@ -9,7 +9,7 @@
 // default order size is never read. Declared in contracts anyway: left at a
 // percentage of equity it reads like a second risk setting, and changing it
 // does nothing.
-strategy("Node - v0.17.0-dev", overlay = true, initial_capital = 50000,
+strategy("Node - v0.17.0", overlay = true, initial_capital = 50000,
      margin_long = 2, margin_short = 2,
      default_qty_type = strategy.fixed, default_qty_value = 1,
      max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
