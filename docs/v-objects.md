@@ -23,10 +23,15 @@ to M objects alone.
 demand region, a bearish one supply. Dojis have no side and are never
 candidates: with no side there is no edge to lose.
 
-**Touched** means price is inside the region. The first time it happens
-the box stops projecting to the right and freezes there, but the region
-stays on the books and every later visit counts as a touch too — the
-frozen box is a drawing, not a state the region has left.
+**Touched** means price has entered the region. It marks the region; it
+does not end it. The box turns **dashed** and goes on projecting to the
+right for as long as the region lives.
+
+It used to freeze there instead, and that was the single most expensive
+mistake in the drawing. A region touched on Monday still trades on
+Wednesday, but its box finished on Monday — so the chart showed nothing at
+a level the setup was holding, and every reading of it concluded the setup
+had armed on air.
 
 **Absorbed** means price took the edge the region lives off — a bullish
 region dies on its low, a bearish one on its high. Strictly: by a tick,
