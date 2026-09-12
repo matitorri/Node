@@ -66,4 +66,54 @@ if not na(riskPerContract) and riskPerContract > 0
 
 // ────────────────────────  POSITION MANAGER  ────────────────────────────
 // Whether this one may be opened, read off the book and the day rather than
-// off the trade. Empty until the rules are specified.
+// off the trade. It never sizes anything and never looks at where the stop
+// is: given the same book it answers the same, whatever the signal was.
+//
+// Two gates. One is about room — a signal arriving while the book is full
+// is ignored, not queued and not stacked on what is running. The other is
+// about the day: a count of trades closed since the session opened, against
+// a limit on each side. Reaching either limit ends the day, and only the
+// session opening brings it back.
+//
+// Counting trades rather than money is deliberate. It bounds the day at a
+// known number of attempts regardless of what each one was worth, and the
+// longest day the defaults allow is two.
+
+G_PM = "Portfolio · Position manager"
+
+maxOpen = input.int(1, "Positions at a time", minval = 1, group = G_PM,
+     tooltip = "A signal that arrives with the book already this full is ignored. It is not remembered: nothing is taken later on its behalf.")
+lossCut = input.int(2, "Losing trades that end the day", minval = 0, group = G_PM,
+     tooltip = "Counted from the session opening. Reaching it stops new positions until the next session. Zero turns the cut off.")
+winCut  = input.int(1, "Winning trades that end the day", minval = 0, group = G_PM,
+     tooltip = "The same on the other side: the day can be ended by going well, not only by going badly. Zero turns the cut off.")
+
+// What the session has closed so far. Profit is net of commission, so a
+// trade scratched to the tick lands on the losing side rather than in a
+// third category that neither cut would ever see.
+var int pmWins   = 0
+var int pmLosses = 0
+
+// How far into the trade list the count has already reached. Cumulative
+// over the whole backtest, so unlike the two above it does not reset: a
+// session turnover clears the tally, never the reading position.
+var int pmRead = 0
+
+if isNewSession
+    pmWins   := 0
+    pmLosses := 0
+
+if strategy.closedtrades > pmRead
+    for i = pmRead to strategy.closedtrades - 1
+        profit = strategy.closedtrades.profit(i)
+        if profit > 0
+            pmWins += 1
+        else if profit < 0
+            pmLosses += 1
+    pmRead := strategy.closedtrades
+
+pmDayOver = (lossCut > 0 and pmLosses >= lossCut) or (winCut > 0 and pmWins >= winCut)
+
+// The one thing this block publishes. A position already running is left
+// alone when the day ends: the gate is on opening, not on holding.
+pmAllows = not pmDayOver and strategy.opentrades < maxOpen
