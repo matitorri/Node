@@ -358,6 +358,10 @@ if array.size(slT) > 0
 
                         if obj.frozen
                             if sT >= obj.expire
+                                // The box goes with it. Dropped without this
+                                // it stayed on the chart with nothing left to
+                                // reach it, one more every few days.
+                                box.delete(obj.bx)
                                 drop := true
                         else if inside
                             box.set_right(obj.bx, sT)
