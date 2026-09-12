@@ -825,13 +825,17 @@ G_M_SETUP = "Setup · M touch"
 
 enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
      tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
-mSetupOpen   = input.int(930,  "Trading hours, from", minval = 0, maxval = 2359, group = G_M_SETUP,
-     tooltip = "New York time, written as HHMM. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
-mSetupClose  = input.int(1700, "Trading hours, to",   minval = 0, maxval = 2359, group = G_M_SETUP)
+mSetupHours  = input.session("0930-1700", "Trading hours", group = G_M_SETUP,
+     tooltip = "New York time. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
 mSetupReady = enableMSetup and enableM   // what it needs from the model
 
-hhmm(int v) => math.floor(v / 100) * 60 + v % 100
+// The session string reads "0930-1700", so the two ends sit at fixed offsets
+// whatever day mask may follow them.
+hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
+
+mSetupFrom = hhmm(str.substring(mSetupHours, 0, 4))
+mSetupTo   = hhmm(str.substring(mSetupHours, 5, 9))
 
 if isNewSession
     setupObj := na
@@ -849,7 +853,7 @@ if array.size(slT) > 0
             VObject hit = array.get(slTouch, k)
             if not na(hit)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
-                if mins >= hhmm(mSetupOpen) and mins < hhmm(mSetupClose)
+                if mins >= mSetupFrom and mins < mSetupTo
                     setupObj  := hit
                     setupTook := true
 
