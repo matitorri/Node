@@ -18,6 +18,17 @@ It publishes an intention, not an order:
 Several strategies could sit on the same setup and the same signal and
 differ only in those four, which is why the boundary is kept.
 
+## Structure
+
+A strategy is three components, one code block each, in the order they
+decide: **execution**, **loss**, **target**. Each block owns what it
+publishes, reads only what the blocks above it published, and may veto
+them — a loss with no distance withdraws the execution. Nothing reaches
+back up.
+
+The day's extremes are measured before all three, since two of them read
+it. That is a measurement, not a component.
+
 ## M reversion
 
 The only one so far. It runs on the setup and the signal as they stand: a

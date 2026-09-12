@@ -44,35 +44,59 @@ else
     dayHigh := math.max(dayHigh, high)
     dayLow  := math.min(dayLow,  low)
 
-// ─────────────────────────  M REVERSION  ────────────────────────────────
+// ══════════════════════════════  M REVERSION  ═══════════════════════════
+// The only strategy so far. Three components, one block each, in the order
+// they decide: where in, where the idea is wrong, where it is done. A block
+// may veto what the one above it published, and nothing reaches back up.
 
-int    tradeDir    = 0                  // +1 long, -1 short, 0 nothing
-float  tradeExec   = na
-float  tradeLoss   = na                 // where the idea is wrong
-float  tradeTarget = na
-string tradeFrom   = ""                 // which rule set the target
+// ───────────────────────────  EXECUTION  ────────────────────────────────
+// At market, on the change of character.
 
-// The trade is bounded by the day it happens in: a long risks the cheapest
-// quote of the session and aims at the dearest, a short the other way.
+int   tradeDir  = 0                     // +1 long, -1 short, 0 nothing
+float tradeExec = na
+
 if signalFired
-    float exec = close
-    float loss = signalDir > 0 ? dayLow  : dayHigh
-    float aim  = signalDir > 0 ? dayHigh : dayLow
+    tradeDir  := signalDir
+    tradeExec := close
 
-    // An extreme can only sit on the wrong side of the execution by being
-    // the execution: price is making it as the signal fires. No distance,
-    // no position.
-    if not na(loss) and (signalDir > 0 ? loss < exec : loss > exec)
-        tradeDir  := signalDir
-        tradeExec := exec
-        tradeLoss := loss
+// ─────────────────────────────  LOSS  ───────────────────────────────────
+// The extreme the trade is exposed to: a long is wrong at the cheapest
+// quote of the day, a short at the dearest.
+//
+// It can only sit on the wrong side of the execution by being the
+// execution — price making the low as the signal fires. No distance, no
+// trade, and the execution is withdrawn.
 
-        if targetMode == TGT_R
-            tradeTarget := exec + signalDir * targetR * math.abs(exec - loss)
-            tradeFrom   := str.tostring(targetR) + "R"
-        else if not na(aim) and (signalDir > 0 ? aim > exec : aim < exec)
+float tradeLoss = na
+
+if tradeDir != 0
+    lvl = tradeDir > 0 ? dayLow : dayHigh
+    if not na(lvl) and (tradeDir > 0 ? lvl < tradeExec : lvl > tradeExec)
+        tradeLoss := lvl
+    else
+        tradeDir  := 0
+        tradeExec := na
+
+// ────────────────────────────  TARGET  ──────────────────────────────────
+// Two rules, chosen by input. The exit by time is not here: it is always
+// on, it is about holding a position, and the strategy cannot see one. It
+// lives in position management.
+//
+// An object target that is not ahead of the execution leaves no target at
+// all, and the position then ends on the loss or on the hours.
+
+float  tradeTarget = na
+string tradeFrom   = ""                 // which rule set it
+
+if tradeDir != 0
+    if targetMode == TGT_R
+        tradeTarget := tradeExec + tradeDir * targetR * math.abs(tradeExec - tradeLoss)
+        tradeFrom   := str.tostring(targetR) + "R"
+    else
+        aim = tradeDir > 0 ? dayHigh : dayLow
+        if not na(aim) and (tradeDir > 0 ? aim > tradeExec : aim < tradeExec)
             tradeTarget := aim
-            tradeFrom   := signalDir > 0 ? "day high" : "day low"
+            tradeFrom   := tradeDir > 0 ? "day high" : "day low"
 
 // ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
 
