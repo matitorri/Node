@@ -1,0 +1,723 @@
+//@version=6
+
+indicator("Node audit - v0.17.1-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+
+// ════════════════════════════════  SHARED  ══════════════════════════════
+// See docs/shared.md.
+
+// ─────────────────────────────  CONSTANTS  ──────────────────────────────
+
+SRC_TF       = "240"                    // M object source timeframe: H4
+TF_MS        = 4 * 60 * 60 * 1000       // length of one H4 candle, in ms
+ID_TF        = "60"                     // ID object source timeframe: H1
+ID_TF_MIN    = 60                       // length of one H1 candle, in minutes
+ID_TF_MS     = 60 * 60 * 1000
+EVAL_TF      = "5"                      // everything is judged on this grid
+EVAL_MS      = 5 * 60 * 1000
+NY_START_MIN = 9 * 60                   // 09:00 ET, first candle of the NY set
+NY_END_MIN   = 17 * 60                  // 17:00 ET, session close
+MS_DAY       = 24 * 60 * 60 * 1000
+NY_TZ        = "America/New_York"
+NY_OPEN_MIN  = 9 * 60 + 30              // 09:30 ET, in minutes from midnight
+SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
+
+// ─────────────────────────────  INPUTS  ─────────────────────────────────
+
+G_COMMON = "Common"
+G_V      = "Objects · V objects"
+
+excludedInput = input.text_area(
+     "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
+     "Skipped sessions", group = G_COMMON,
+     tooltip = "Sessions the system sits out entirely: no objects are created and no setup arms, so nothing trades. One date per entry, comma or line separated, and the date is the session's closing day in New York time — the session that closes on it opened at 18:00 the evening before. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw. The diagnostics table says how many dates it read and whether the session on screen is one of them.")
+warnGrid = input.bool(true, "Warn when the chart does not fit the grid", group = G_COMMON)
+showDiag = input.bool(false, "Diagnostics table", group = G_COMMON,
+     tooltip = "Reports the state behind the drawings on the last bar: what the feeds say the session is, when the last turnover happened, and where each object stands.")
+
+enableM      = input.bool(true, "Enable M objects", group = G_V,
+     tooltip = "Off means no M object is ever created, not merely hidden. It also removes one of the two ways a NY ID object can be triggered, the other being an ID object getting absorbed.")
+markColor    = input.color(color.new(color.orange, 0), "M object color", group = G_V)
+lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1, group = G_V,
+     tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
+
+enableId     = input.bool(true, "Enable ID objects", group = G_V)
+idColor      = input.color(color.new(color.blue, 0), "ID object color", group = G_V)
+
+enableNyId   = input.bool(true, "Enable NY ID object", group = G_V)
+nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_V)
+
+// ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
+
+var array<int> excludedDates = array.new<int>()
+if barstate.isfirst
+    parts = str.split(str.replace_all(excludedInput, "\n", ","), ",")
+    for i = 0 to array.size(parts) - 1
+        raw   = array.get(parts, i)
+        clean = str.replace_all(str.replace_all(str.replace_all(raw, "-", ""), "/", ""), " ", "")
+        num   = str.tonumber(clean)
+        if not na(num)
+            array.push(excludedDates, int(num))
+
+// ──────────────────────────  EVALUATION GRID  ───────────────────────────
+// Coarser charts are split into five-minute intrabars, finer ones bucketed.
+
+coarse = timeframe.in_seconds() > 300
+evalTf = coarse ? EVAL_TF : timeframe.period
+
+[ltfT, ltfO, ltfH, ltfL, ltfC, ltfV] = request.security_lower_tf(
+     syminfo.tickerid, evalTf, [time, open, high, low, close, volume])
+
+var array<int>   slT = array.new<int>()
+var array<float> slO = array.new<float>()
+var array<float> slH = array.new<float>()
+var array<float> slL = array.new<float>()
+var array<float> slC = array.new<float>()
+var array<float> slV = array.new<float>()
+
+var int   bkT = na                      // bucket under construction, used
+var float bkO = na                      // only on charts finer than the grid
+var float bkH = na
+var float bkL = na
+var float bkV = 0.0
+
+array.clear(slT)
+array.clear(slO)
+array.clear(slH)
+array.clear(slL)
+array.clear(slC)
+array.clear(slV)
+
+if coarse
+    if array.size(ltfT) > 0
+        for i = 0 to array.size(ltfT) - 1
+            array.push(slT, array.get(ltfT, i))
+            array.push(slO, array.get(ltfO, i))
+            array.push(slH, array.get(ltfH, i))
+            array.push(slL, array.get(ltfL, i))
+            array.push(slC, array.get(ltfC, i))
+            array.push(slV, array.get(ltfV, i))
+else
+    if na(bkT)
+        bkT := time - time % EVAL_MS
+        bkO := open
+        bkH := high
+        bkL := low
+        bkV := 0.0
+    bkH := math.max(bkH, high)
+    bkL := math.min(bkL, low)
+    bkV := bkV + nz(volume)
+    if time_close % EVAL_MS == 0
+        array.push(slT, bkT)
+        array.push(slO, bkO)
+        array.push(slH, bkH)
+        array.push(slL, bkL)
+        array.push(slC, close)
+        array.push(slV, bkV)
+        bkT := na
+
+// ─────────────────────────  NEW YORK CLOCK  ─────────────────────────────
+
+// The session a moment belongs to. Pushing 18:00 ET to midnight turns the
+// exchange session into a plain calendar date, daylight saving included.
+sessionDay(int t) =>
+    shifted = t + (1440 - SESS_OPEN_MIN) * 60000
+    year(shifted, NY_TZ) * 10000 + month(shifted, NY_TZ) * 100 + dayofmonth(shifted, NY_TZ)
+
+var array<bool> slOpen = array.new<bool>()
+var array<bool> slNewSess = array.new<bool>()
+var array<bool> slInNy = array.new<bool>()
+var array<bool> slSkip = array.new<bool>()
+var array<bool> slEvt  = array.new<bool>()
+
+var bool nyOpenSeen = false
+var int  lastNyDay  = na
+var int  lastSess   = na
+
+array.clear(slOpen)
+array.clear(slNewSess)
+array.clear(slInNy)
+array.clear(slSkip)
+array.clear(slEvt)
+
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        t    = array.get(slT, k)
+        mins = hour(t, NY_TZ) * 60 + minute(t, NY_TZ)
+        dom  = dayofmonth(t, NY_TZ)
+        if na(lastNyDay) or dom != lastNyDay
+            nyOpenSeen := false
+            lastNyDay  := dom
+        // Bounded at both ends. Without the upper bound a Sunday reopen at
+        // 18:00 ET counts as an opening: first trade of that New York day.
+        isOpen = not nyOpenSeen and mins >= NY_OPEN_MIN and mins < NY_END_MIN
+        if isOpen
+            nyOpenSeen := true
+        sess = sessionDay(t)
+        array.push(slNewSess, not na(lastSess) and sess != lastSess)
+        lastSess := sess
+        array.push(slOpen, isOpen)
+        array.push(slInNy, mins >= NY_START_MIN and mins < NY_END_MIN)
+        array.push(slSkip, array.includes(excludedDates, sess))
+        array.push(slEvt, false)
+
+// ─────────────────────────  SESSION OPENING  ────────────────────────────
+
+// Read off the clock. timeframe.change("D") can run for days without
+// reporting a change around a holiday, which freezes every reset hanging
+// off it. Each call site keeps its own state.
+sessionOpened() =>
+    var int  lastDay = na
+    var bool seen    = false
+    d = dayofmonth(time, NY_TZ)
+    if na(lastDay) or d != lastDay
+        lastDay := d
+        seen    := false
+    fire = not seen and hour(time, NY_TZ) * 60 + minute(time, NY_TZ) >= SESS_OPEN_MIN
+    if fire
+        seen := true
+    fire
+
+// The same, for 09:30. Bounded above for the reason the slice detector is:
+// a Sunday reopen is the first trade of its New York day and sits well past
+// the open.
+nyOpened() =>
+    var int  lastDay = na
+    var bool seen    = false
+    d = dayofmonth(time, NY_TZ)
+    if na(lastDay) or d != lastDay
+        lastDay := d
+        seen    := false
+    m    = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
+    fire = not seen and m >= NY_OPEN_MIN and m < NY_END_MIN
+    if fire
+        seen := true
+    fire
+
+// ══════════════════════════════  V OBJECTS  ═════════════════════════════
+// See docs/v-objects.md.
+
+type VObject
+    int   t      = na                   // source candle open time
+    float top    = na
+    float bot    = na
+    int   side   = 0                    // +1 long, -1 short
+    int   born   = na                   // when its box was drawn
+    bool  frozen = false                // touched, and with that done
+    int   endT   = na                   // where it stops projecting. While it
+                                        // is na the region is still running,
+                                        // and the drawing follows
+    bool  eaten  = false                // the far edge is gone, so is the region
+    bool  active = false                // M only: trimmed and touchable
+    float wMin   = na                   // M only: trim window extremes
+    float wMax   = na
+    int   expire = na                   // M only
+    box   bx     = na
+
+// ─────────────────────────────  M OBJECT  ───────────────────────────────
+
+// ───────────────  MAXIMUM DETECTION (runs on the H4 series)  ────────────
+
+h4DailyMax() =>
+    var float mVol   = na
+    var int   mTime  = na
+    var float mOpen  = na
+    var float mHigh  = na
+    var float mLow   = na
+    var float mClose = na
+    var int   dayNum = 0                // increments once per session
+    var int lastSessDate = na           // the session that just ended, YYYYMMDD
+    if sessionOpened() or na(mVol)
+        dayNum += 1
+        lastSessDate := na(time[1]) ? na : year(time[1], NY_TZ) * 10000 + month(time[1], NY_TZ) * 100 + dayofmonth(time[1], NY_TZ)
+        mVol   := volume
+        mTime  := time
+        mOpen  := open
+        mHigh  := high
+        mLow   := low
+        mClose := close
+    else if volume > mVol
+        mVol   := volume
+        mTime  := time
+        mOpen  := open
+        mHigh  := high
+        mLow   := low
+        mClose := close
+    [mTime, mOpen, mHigh, mLow, mClose, mVol, dayNum, lastSessDate]
+
+[wTime, wOpen, wHigh, wLow, wClose, wVol, dayNum, lastSessDate] = request.security(
+     syminfo.tickerid, SRC_TF, h4DailyMax(), lookahead = barmerge.lookahead_off)
+
+// ───────────────────────────  STATE  ────────────────────────────────────
+
+var array<VObject> mObjects = array.new<VObject>()
+var VObject prov = na                   // winner of the session in progress
+var int lastTurnT = na                  // when the session last turned over
+
+// Which M object price entered on each slice, if any. Only the lifecycle
+// below is in a position to see it happen, so it publishes it.
+var array<VObject> slTouch = array.new<VObject>()
+
+// ────────────────────────  SESSION TURNOVER  ────────────────────────────
+
+isNewSession = dayNum != nz(dayNum[1], 0)
+winnerMoved  = wTime != wTime[1]
+
+if not na(wTime)
+    objSide = wClose > wOpen ? 1 : wClose < wOpen ? -1 : 0
+
+    if isNewSession
+        lastTurnT := time
+
+        // The winner is final only now: while the session ran it could still
+        // change hands. Half sessions trade too little for theirs to mean much.
+        sessionOk = na(lastSessDate) or not array.includes(excludedDates, lastSessDate)
+
+        if not na(prov)
+            if enableM and prov.side != 0 and sessionOk
+                prov.expire := prov.t + lifetimeDays * MS_DAY
+                prov.bx := box.new(prov.t, prov.top, time, prov.bot,
+                     xloc         = xloc.bar_time,
+                     border_color = markColor,
+                     bgcolor      = color.new(markColor, 85))
+                array.push(mObjects, prov)
+        prov := VObject.new(t = wTime, top = wHigh, bot = wLow, side = objSide)
+
+    else if winnerMoved and not na(prov)
+        prov.t    := wTime
+        prov.top  := wHigh
+        prov.bot  := wLow
+        prov.side := objSide
+        prov.wMin := na
+        prov.wMax := na
+
+// ──────────────────────────────  TRIM  ──────────────────────────────────
+// The New York open is a moment, not a slice. Keyed to the slice that starts
+// at 09:30, the trim only landed when that slice was published — five
+// minutes later on an M1 chart, fifteen on an M15 — and until then the
+// region carried the night's shape and could not be touched at all.
+//
+// The window is still made of slices and still closes at 09:30, so the range
+// a region ends up with does not depend on the chart. Only the moment it is
+// applied is read off the bar.
+
+if nyOpened() and not array.includes(excludedDates, sessionDay(time)) and array.size(mObjects) > 0
+    for i = array.size(mObjects) - 1 to 0
+        obj = array.get(mObjects, i)
+        if not obj.active
+            // What survives is the part price never visited, on the side the
+            // candle came from.
+            float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
+            float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
+            if newTop <= newBot
+                // Fully absorbed overnight.
+                box.delete(obj.bx)
+                array.remove(mObjects, i)
+            else
+                obj.top    := newTop
+                obj.bot    := newBot
+                obj.active := true
+
+// ──────────────────────────  LIFECYCLE  ─────────────────────────────────
+
+array.clear(slTouch)
+
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        array.push(slTouch, na)
+        sT   = array.get(slT, k)
+        sH   = array.get(slH, k)
+        sL   = array.get(slL, k)
+        sIn  = array.get(slInNy, k)
+        sNew = array.get(slNewSess, k)
+        sSkp = array.get(slSkip, k)
+
+        if not na(prov)
+            if sT >= prov.t + TF_MS
+                prov.wMin := na(prov.wMin) ? sL : math.min(prov.wMin, sL)
+                prov.wMax := na(prov.wMax) ? sH : math.max(prov.wMax, sH)
+
+        if array.size(mObjects) > 0
+            for i = array.size(mObjects) - 1 to 0
+                obj = array.get(mObjects, i)
+                bool drop = false
+
+                // A session the calendar excludes is not one the region is
+                // judged on: it neither trims, nor is touched, nor is absorbed
+                // there. It reaches the next real session as it was, and goes
+                // on being drawn, because it goes on existing.
+                if not sSkp
+                    // The window closes at the New York open and nowhere else, so
+                    // a region that survived a session untouched opens its window
+                    // again and is trimmed afresh at the next one. Between the two
+                    // it is not touchable, which is what keeps a visit at three in
+                    // the morning from settling a box the day had yet to shape.
+                    if sNew and not obj.frozen
+                        obj.active := false
+                        obj.wMin   := na
+                        obj.wMax   := na
+
+                    if not obj.active
+                        // The window closes at the open of the session the
+                        // slice belongs to. Evening slices are before theirs,
+                        // which is why the bound is not simply an earlier hour.
+                        sMin = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
+                        if sMin < NY_OPEN_MIN or sMin >= NY_END_MIN
+                            obj.wMin := na(obj.wMin) ? sL : math.min(obj.wMin, sL)
+                            obj.wMax := na(obj.wMax) ? sH : math.max(obj.wMax, sH)
+
+                    if not drop and obj.active
+                        inside = sH >= obj.bot and sL <= obj.top
+
+                        if obj.frozen
+                            // Touched, and with that done. The box ended there
+                            // because the region did: it offers itself to no
+                            // setup again. It stays on the books only so price
+                            // can still be caught absorbing it, which is what
+                            // the NY ID object waits on.
+                            if sT >= obj.expire
+                                drop := true
+                        else if inside
+                            // The touch, published once, on the same transition
+                            // the box draws — so what the chart shows and what
+                            // the setup reads are one fact rather than two.
+                            //
+                            // Published every slice it held instead, a region
+                            // wide enough to contain the day went on arming the
+                            // setup for as long as it lived, with its box
+                            // finished days earlier.
+                            //
+                            // When price enters two at once the newest claims
+                            // the slot, which is why the list is walked from
+                            // the end.
+                            obj.frozen := true
+                            obj.endT   := sT
+                            if na(array.get(slTouch, k))
+                                array.set(slTouch, k, obj)
+                        else if sT >= obj.expire
+                            drop := true
+
+                    // The far edge: a bullish region dies on its low, a bearish one
+                    // on its high. Absorbed during New York, it fires slEvt.
+                    if not drop and obj.active and not obj.eaten
+                        if obj.side > 0 ? sL < obj.bot : sH > obj.top
+                            obj.eaten := true
+                            if sIn
+                                array.set(slEvt, k, true)
+
+                if drop
+                    box.delete(obj.bx)
+                    array.remove(mObjects, i)
+
+// ─────────────────────────────  ID OBJECT  ──────────────────────────────
+
+// ──────────  PRE-NEW-YORK SURVIVOR (runs on the H1 series)  ────────────
+
+h1PreNySurvivor() =>
+    var array<int>   cTime = array.new<int>()
+    var array<float> cHigh = array.new<float>()
+    var array<float> cLow  = array.new<float>()
+    var array<float> cVol  = array.new<float>()
+    var array<int>   cSide = array.new<int>()
+    var array<bool>  cGone = array.new<bool>()
+    var bool inWin = false
+
+    if sessionOpened()
+        inWin := true
+        array.clear(cTime)
+        array.clear(cHigh)
+        array.clear(cLow)
+        array.clear(cVol)
+        array.clear(cSide)
+        array.clear(cGone)
+
+    nyMin = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
+    if inWin and nyMin < 720 and nyMin + ID_TF_MIN > NY_OPEN_MIN
+        inWin := false
+
+    if inWin
+        if array.size(cTime) > 0
+            for i = 0 to array.size(cTime) - 1
+                if not array.get(cGone, i)
+                    if array.get(cSide, i) > 0 ? low < array.get(cLow, i) : high > array.get(cHigh, i)
+                        array.set(cGone, i, true)
+        candleSide = close > open ? 1 : close < open ? -1 : 0
+        if candleSide != 0
+            array.push(cTime, time)
+            array.push(cHigh, high)
+            array.push(cLow,  low)
+            array.push(cVol,  volume)
+            array.push(cSide, candleSide)
+            array.push(cGone, false)
+
+    int   bTime = na
+    float bHigh = na
+    float bLow  = na
+    float bVol  = na
+    int   bSide = 0
+    if array.size(cTime) > 0
+        for i = 0 to array.size(cTime) - 1
+            if not array.get(cGone, i)
+                v = array.get(cVol, i)
+                if na(bVol) or v > bVol
+                    bVol  := v
+                    bTime := array.get(cTime, i)
+                    bHigh := array.get(cHigh, i)
+                    bLow  := array.get(cLow, i)
+                    bSide := array.get(cSide, i)
+    [bTime, bHigh, bLow, bVol, bSide]
+
+[idSrcTime, idSrcHigh, idSrcLow, idSrcVol, idSrcSide] = request.security(
+     syminfo.tickerid, ID_TF, h1PreNySurvivor(), lookahead = barmerge.lookahead_off)
+
+// ───────────────────────────  STATE  ────────────────────────────────────
+
+var VObject idObj = na                  // the one of this session
+
+// ────────────────────────  SESSION TURNOVER  ────────────────────────────
+
+if isNewSession
+    if not na(idObj)
+        box.delete(idObj.bx)
+    idObj := na
+
+// ──────────────────────────  LIFECYCLE  ─────────────────────────────────
+
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        sT  = array.get(slT, k)
+        sH  = array.get(slH, k)
+        sL  = array.get(slL, k)
+        sIn = array.get(slInNy, k)
+
+        if enableId and array.get(slOpen, k) and not array.get(slSkip, k) and not na(idSrcTime)
+            // Whatever stands here goes first: an orphaned box can never be
+            // reached again and would sit on the chart for good.
+            if not na(idObj)
+                box.delete(idObj.bx)
+            idObj := VObject.new(t = idSrcTime, top = idSrcHigh,
+                 bot = idSrcLow, side = idSrcSide, born = sT)
+            idObj.bx := box.new(idSrcTime, idSrcHigh, sT, idSrcLow,
+                 xloc         = xloc.bar_time,
+                 border_color = idColor,
+                 bgcolor      = color.new(idColor, 85))
+
+        if not na(idObj) and not idObj.frozen
+            if sH >= idObj.bot and sL <= idObj.top
+                idObj.frozen := true
+                idObj.endT   := sT
+
+        if not na(idObj) and not idObj.eaten
+            if idObj.side > 0 ? sL < idObj.bot : sH > idObj.top
+                idObj.eaten := true
+                if sIn
+                    array.set(slEvt, k, true)
+
+// ───────────────────────────  NY ID OBJECT  ─────────────────────────────
+// Redrawn on an absorption event, and only then. See docs/v-objects.md.
+
+// ───────────────────────────  STATE  ────────────────────────────────────
+
+var VObject nyObj = na                  // the one of this session, as drawn
+
+// The H1 candle in progress, accumulated from slices: request.security
+// cannot hand back an unclosed candle on history, and an unclosed candle
+// is exactly what may have to be picked.
+var int   curT = na
+var float curO = na
+var float curH = na
+var float curL = na
+var float curC = na
+var float curV = na
+
+var array<int>   nyT    = array.new<int>()
+var array<float> nyH    = array.new<float>()
+var array<float> nyL    = array.new<float>()
+var array<float> nyV    = array.new<float>()
+var array<int>   nySd   = array.new<int>()
+var array<bool>  nyGone = array.new<bool>()
+
+// ────────────────────────  SESSION TURNOVER  ────────────────────────────
+
+if isNewSession
+    if not na(nyObj)
+        box.delete(nyObj.bx)
+    nyObj := na
+    curT  := na                         // so the candle straddling the
+    curO  := na                         // turnover is not filed under the
+    curH  := na                         // session that is starting
+    curL  := na
+    curC  := na
+    curV  := na
+    array.clear(nyT)
+    array.clear(nyH)
+    array.clear(nyL)
+    array.clear(nyV)
+    array.clear(nySd)
+    array.clear(nyGone)
+
+// ──────────────────────────  LIFECYCLE  ─────────────────────────────────
+
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        sT = array.get(slT, k)
+        sO = array.get(slO, k)
+        sH = array.get(slH, k)
+        sL = array.get(slL, k)
+        sC = array.get(slC, k)
+        sV = array.get(slV, k)
+
+        if na(curT) or math.floor(sT / ID_TF_MS) != math.floor(curT / ID_TF_MS)
+            if not na(curT)
+                endedSide  = curC > curO ? 1 : curC < curO ? -1 : 0
+                endedNyMin = hour(curT, NY_TZ) * 60 + minute(curT, NY_TZ)
+                if endedSide != 0 and endedNyMin >= NY_START_MIN and endedNyMin < NY_END_MIN
+                    array.push(nyT,    curT)
+                    array.push(nyH,    curH)
+                    array.push(nyL,    curL)
+                    array.push(nyV,    curV)
+                    array.push(nySd,   endedSide)
+                    array.push(nyGone, false)
+            curT := sT - sT % ID_TF_MS
+            curO := sO
+            curH := sH
+            curL := sL
+            curC := sC
+            curV := nz(sV)
+        else
+            curH := math.max(curH, sH)
+            curL := math.min(curL, sL)
+            curC := sC
+            curV := curV + nz(sV)
+
+        if array.size(nyT) > 0
+            for i = 0 to array.size(nyT) - 1
+                if not array.get(nyGone, i) and sT >= array.get(nyT, i) + ID_TF_MS
+                    if array.get(nySd, i) > 0 ? sL < array.get(nyL, i) : sH > array.get(nyH, i)
+                        array.set(nyGone, i, true)
+
+        int   bestT = na
+        float bestH = na
+        float bestL = na
+        float bestV = na
+        int   bestS = 0
+        if array.size(nyT) > 0
+            for i = 0 to array.size(nyT) - 1
+                if not array.get(nyGone, i)
+                    v = array.get(nyV, i)
+                    if na(bestV) or v > bestV
+                        bestV := v
+                        bestT := array.get(nyT, i)
+                        bestH := array.get(nyH, i)
+                        bestL := array.get(nyL, i)
+                        bestS := array.get(nySd, i)
+
+        curNyMin = na(curT) ? na : hour(curT, NY_TZ) * 60 + minute(curT, NY_TZ)
+        curSide  = na(curT) ? 0 : curC > curO ? 1 : curC < curO ? -1 : 0
+        if not na(curNyMin) and curNyMin >= NY_START_MIN and curNyMin < NY_END_MIN and curSide != 0
+            if na(bestV) or curV > bestV
+                bestV := curV
+                bestT := curT
+                bestH := curH
+                bestL := curL
+                bestS := curSide
+
+        // A bigger candle closing between events does not take the place on
+        // its own: it takes it at the next event.
+        if enableNyId and array.get(slEvt, k) and (na(nyObj) or not nyObj.eaten) and not array.get(slSkip, k) and not na(bestT)
+            if not na(nyObj)
+                box.delete(nyObj.bx)
+            nyObj := VObject.new(t = bestT, top = bestH, bot = bestL,
+                 side = bestS, born = sT)
+            nyObj.bx := box.new(bestT, bestH, sT, bestL,
+                 xloc         = xloc.bar_time,
+                 border_color = nyIdColor,
+                 bgcolor      = color.new(nyIdColor, 85))
+
+        if not na(nyObj) and not nyObj.eaten
+            if nyObj.side > 0 ? sL < nyObj.bot : sH > nyObj.top
+                nyObj.eaten := true
+                nyObj.endT  := sT
+
+// ────────────────────────────  DRAWING  ─────────────────────────────────
+// The only place a box is given a shape. Every V object is painted from its
+// own state, on every bar, so the chart cannot say anything the object does
+// not: the range is the range, and the box ends where the region ends.
+//
+// Geometry used to be written wherever a lifecycle happened to be — at the
+// trim, at the touch, at an absorption, on an excluded session — half a
+// dozen places that each had to remember to keep the drawing current. Miss
+// one and the chart and the model become two accounts of the same fact.
+// They did, and telling which was wrong took longer than either bug.
+
+paint(VObject o) =>
+    if not na(o) and not na(o.bx)
+        box.set_lefttop(o.bx, o.t, o.top)
+        box.set_rightbottom(o.bx, na(o.endT) ? time : o.endT, o.bot)
+
+if array.size(mObjects) > 0
+    for i = 0 to array.size(mObjects) - 1
+        paint(array.get(mObjects, i))
+
+paint(idObj)
+paint(nyObj)
+
+// ═══════════════════════════════  HISTORY  ══════════════════════════════
+// Every V object the model has made, kept on the chart after the model has
+// let go of it.
+//
+// The model holds what is in play and deletes what is not, which is what
+// makes the other two scripts trustworthy. The cost is that checking a past
+// day means walking back to it one session at a time. This keeps the trace
+// instead, so a region can be found first and verified afterwards.
+//
+// A box here is a copy that follows a region while it lives and stops being
+// written the moment the model drops it — so it settles at exactly what the
+// region last was. Nothing here decides anything; the model is still the
+// only source.
+
+G_HIST = "History"
+
+histM  = input.bool(true, "Keep M objects",     group = G_HIST)
+histId = input.bool(true, "Keep ID objects",    group = G_HIST)
+histNy = input.bool(true, "Keep NY ID objects", group = G_HIST)
+histFade = input.int(90, "Fill transparency", minval = 0, maxval = 100, group = G_HIST,
+     tooltip = "Kept regions are drawn fainter than live ones, so both can be read with this and the model side by side.")
+
+// Pine holds 500 boxes and silently drops the oldest past that. Bounded here
+// instead, well under the limit, so a box is never taken out from under the
+// record that still points at it.
+HIST_MAX = 400
+
+var array<int> histKey = array.new<int>()
+var array<box> histBx  = array.new<box>()
+
+// A region is identified by its source candle. The kind is added to the key
+// because an H4 and an H1 candle can open at the same minute, and two
+// different regions must never share a box.
+keep(VObject o, color c, int kind) =>
+    if not na(o)
+        key  = o.t + kind
+        slot = array.indexof(histKey, key)
+        if slot < 0
+            if array.size(histKey) >= HIST_MAX
+                box.delete(array.shift(histBx))
+                array.shift(histKey)
+            array.push(histKey, key)
+            array.push(histBx, box.new(o.t, o.top, time, o.bot,
+                 xloc         = xloc.bar_time,
+                 border_color = c,
+                 bgcolor      = color.new(c, histFade)))
+            slot := array.size(histKey) - 1
+        b = array.get(histBx, slot)
+        box.set_lefttop(b, o.t, o.top)
+        box.set_rightbottom(b, na(o.endT) ? time : o.endT, o.bot)
+
+if histM and array.size(mObjects) > 0
+    for i = 0 to array.size(mObjects) - 1
+        keep(array.get(mObjects, i), markColor, 0)
+
+if histId
+    keep(idObj, idColor, 1)
+
+if histNy
+    keep(nyObj, nyIdColor, 2)

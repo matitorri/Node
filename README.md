@@ -3,10 +3,11 @@
 A trading system for CME futures, written in Pine Script v6 and run on
 TradingView.
 
-One model, two scripts. `dist/node_indicator.pine` draws the model on a
-chart; `dist/node_strategy.pine` trades it. Both are assembled from the
-same sources in `src/`, so the strategy cannot drift from what the
-indicator shows.
+One model, three scripts. `dist/node_indicator.pine` draws the model on a
+chart, `dist/node_strategy.pine` trades it, and `dist/node_audit.pine`
+keeps every region the model has ever held so past days can be found
+without walking back through them. All three are assembled from the same
+sources in `src/`, so none can drift from the others.
 
 ## Using it
 

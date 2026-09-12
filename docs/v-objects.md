@@ -140,3 +140,15 @@ places that each had to remember to keep the drawing current, and the
 chart and the model were two accounts of the same fact rather than one.
 They disagreed, and working out which of the two was wrong took longer
 than any bug in either.
+
+## The audit script
+
+`dist/node_audit.pine` runs the same model and keeps what it discards. A
+box there is a copy that follows a region while it lives and stops being
+written the moment the model drops it, so it settles at exactly what the
+region last was.
+
+It decides nothing and publishes nothing — the model is still the only
+source. It holds the last 400 regions; Pine keeps 500 drawings and drops
+the oldest silently, so the bound is set below that rather than left to
+chance.

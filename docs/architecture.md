@@ -30,30 +30,36 @@ The order is not decorative. Each layer may read the ones above it and
 none of the ones below. A setup cannot see a position; a strategy cannot
 see the book.
 
-## The two scripts
+## The three scripts
 
 A Pine file can only be one script type, so a strategy has to be its own
-script. Rather than keep two copies of the model, `build.py` assembles
-both from the same parts:
+script. Rather than keep copies of the model, `build.py` assembles each
+one from the same parts:
 
-| part | indicator | strategy |
-|---|---|---|
-| `model.vobjects` | ✓ | ✓ |
-| `model.structure` | ✓ | ✓ |
-| `setup` | ✓ | ✓ |
-| `signal` | ✓ | ✓ |
-| `diagnostics` | ✓ | ✓ |
-| `output` | ✓ | ✓ |
-| `indicator.tail` | ✓ | |
-| `strategy` | | ✓ |
-| `portfolio` | | ✓ |
+| part | indicator | strategy | audit |
+|---|---|---|---|
+| `model.vobjects` | ✓ | ✓ | ✓ |
+| `model.structure` | ✓ | ✓ | |
+| `setup` | ✓ | ✓ | |
+| `signal` | ✓ | ✓ | |
+| `diagnostics` | ✓ | ✓ | |
+| `output` | ✓ | ✓ | |
+| `indicator.tail` | ✓ | | |
+| `strategy` + `portfolio` | | ✓ | |
+| `audit.tail` | | | ✓ |
 
-Both scripts draw the model — a strategy that cannot show the structure it
-trades is not worth watching. What the indicator keeps to itself is a
-single line: `alertcondition` is not allowed in a strategy. What the
-strategy keeps to itself is the book.
+**Indicator** draws the model. What it keeps to itself is a single line:
+`alertcondition` is not allowed in a strategy.
 
-Everything shared is identical in both, byte for byte.
+**Strategy** draws the same model and trades it. What it keeps to itself
+is the book.
+
+**Audit** carries the V objects and nothing else — no structure, no setup,
+no signal — and keeps every region the model has held, after the model has
+let go. The other two show what is in play; this one shows where things
+were, so a day can be found before it is checked.
+
+Everything shared is identical in all of them, byte for byte.
 
 ## Ordering constraints
 

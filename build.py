@@ -11,22 +11,24 @@ from pathlib import Path
 SRC  = Path("src")
 DIST = Path("dist")
 
-KINDS = ("indicator", "strategy")
-
-
-SHARED = ("model.vobjects", "model.structure", "setup", "signal", "diagnostics", "output")
-
-# What each script adds on top of the shared layers. Both draw the model;
-# only the indicator can raise an alert, and only the strategy has a book.
-OWN = {
-    "indicator": ("indicator.tail",),
-    "strategy":  ("strategy", "portfolio"),
+# What each script is made of, in order. The three share the model, so what
+# one draws another cannot contradict.
+#
+#   indicator   the model, drawn, with the alert only it can raise
+#   strategy    the model, drawn, plus the trade and the book
+#   audit       the model, and every region it has ever held, kept
+PARTS = {
+    "indicator": ("indicator.head", "model.vobjects", "model.structure",
+                  "setup", "signal", "diagnostics", "output", "indicator.tail"),
+    "strategy":  ("strategy.head", "model.vobjects", "model.structure",
+                  "setup", "signal", "diagnostics", "output",
+                  "strategy", "portfolio"),
+    "audit":     ("audit.head", "model.vobjects", "audit.tail"),
 }
 
 
 def build(kind: str) -> Path:
-    names = (f"{kind}.head", *SHARED, *OWN[kind])
-    parts = [SRC / f"{name}.pine" for name in names]
+    parts = [SRC / f"{name}.pine" for name in PARTS[kind]]
     body = "\n\n".join(p.read_text().strip("\n") for p in parts) + "\n"
     # The version pragma is a comment, so anything that sweeps comments can
     # take it with it and the artifact silently compiles as Pine v1.
@@ -39,7 +41,7 @@ def build(kind: str) -> Path:
 
 def main() -> None:
     DIST.mkdir(exist_ok=True)
-    for kind in KINDS:
+    for kind in PARTS:
         out = build(kind)
         print(f"{out}  {len(out.read_text().splitlines())} lines")
 

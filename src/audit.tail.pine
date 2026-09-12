@@ -1,0 +1,60 @@
+// ═══════════════════════════════  HISTORY  ══════════════════════════════
+// Every V object the model has made, kept on the chart after the model has
+// let go of it.
+//
+// The model holds what is in play and deletes what is not, which is what
+// makes the other two scripts trustworthy. The cost is that checking a past
+// day means walking back to it one session at a time. This keeps the trace
+// instead, so a region can be found first and verified afterwards.
+//
+// A box here is a copy that follows a region while it lives and stops being
+// written the moment the model drops it — so it settles at exactly what the
+// region last was. Nothing here decides anything; the model is still the
+// only source.
+
+G_HIST = "History"
+
+histM  = input.bool(true, "Keep M objects",     group = G_HIST)
+histId = input.bool(true, "Keep ID objects",    group = G_HIST)
+histNy = input.bool(true, "Keep NY ID objects", group = G_HIST)
+histFade = input.int(90, "Fill transparency", minval = 0, maxval = 100, group = G_HIST,
+     tooltip = "Kept regions are drawn fainter than live ones, so both can be read with this and the model side by side.")
+
+// Pine holds 500 boxes and silently drops the oldest past that. Bounded here
+// instead, well under the limit, so a box is never taken out from under the
+// record that still points at it.
+HIST_MAX = 400
+
+var array<int> histKey = array.new<int>()
+var array<box> histBx  = array.new<box>()
+
+// A region is identified by its source candle. The kind is added to the key
+// because an H4 and an H1 candle can open at the same minute, and two
+// different regions must never share a box.
+keep(VObject o, color c, int kind) =>
+    if not na(o)
+        key  = o.t + kind
+        slot = array.indexof(histKey, key)
+        if slot < 0
+            if array.size(histKey) >= HIST_MAX
+                box.delete(array.shift(histBx))
+                array.shift(histKey)
+            array.push(histKey, key)
+            array.push(histBx, box.new(o.t, o.top, time, o.bot,
+                 xloc         = xloc.bar_time,
+                 border_color = c,
+                 bgcolor      = color.new(c, histFade)))
+            slot := array.size(histKey) - 1
+        b = array.get(histBx, slot)
+        box.set_lefttop(b, o.t, o.top)
+        box.set_rightbottom(b, na(o.endT) ? time : o.endT, o.bot)
+
+if histM and array.size(mObjects) > 0
+    for i = 0 to array.size(mObjects) - 1
+        keep(array.get(mObjects, i), markColor, 0)
+
+if histId
+    keep(idObj, idColor, 1)
+
+if histNy
+    keep(nyObj, nyIdColor, 2)
