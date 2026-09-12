@@ -214,9 +214,7 @@ type VObject
     float bot    = na
     int   side   = 0                    // +1 long, -1 short
     int   born   = na                   // when its box was drawn
-    bool  touched = false               // price has entered it, and it is
-                                        // still a region: the box goes on
-                                        // running, dashed
+    bool  frozen = false                // the box stopped growing
     bool  eaten  = false                // the far edge is gone, so is the region
     bool  active = false                // M only: trimmed and touchable
     float wMin   = na                   // M only: trim window extremes
@@ -359,14 +357,15 @@ if array.size(slT) > 0
                 // there. The box goes on projecting, or the day would read as
                 // a touch that never happened.
                 if sSkp
-                    box.set_right(obj.bx, sT)
+                    if not obj.frozen
+                        box.set_right(obj.bx, sT)
                 else
                     // The window closes at the New York open and nowhere else, so
                     // a region that survived a session untouched opens its window
                     // again and is trimmed afresh at the next one. Between the two
                     // it is not touchable, which is what keeps a visit at three in
                     // the morning from settling a box the day had yet to shape.
-                    if sNew and not obj.touched
+                    if sNew and not obj.frozen
                         obj.active := false
                         obj.wMin   := na
                         obj.wMax   := na
@@ -382,6 +381,11 @@ if array.size(slT) > 0
                         box.set_right(obj.bx, sT)
 
                     if not drop and obj.active
+                        // Being inside the region is the event, and it is published
+                        // every slice it holds. Freezing the box is a drawing
+                        // matter and happens once; tying the two together spent an
+                        // object's only chance to arm a setup on its first touch,
+                        // whatever hour that was.
                         inside = sH >= obj.bot and sL <= obj.top
 
                         // One region per slice, and when price is inside two
@@ -391,15 +395,13 @@ if array.size(slT) > 0
                         if inside and na(array.get(slTouch, k))
                             array.set(slTouch, k, obj)
 
-                        // The touch marks the region; it does not end it. The
-                        // box used to stop there, which left it finished days
-                        // before the region was, so the chart showed nothing
-                        // at a level the setup was holding. It runs on, dashed.
-                        if inside and not obj.touched
-                            obj.touched := true
-                            box.set_border_style(obj.bx, line.style_dashed)
-
-                        if sT >= obj.expire
+                        if obj.frozen
+                            if sT >= obj.expire
+                                drop := true
+                        else if inside
+                            box.set_right(obj.bx, sT)
+                            obj.frozen := true
+                        else if sT >= obj.expire
                             box.delete(obj.bx)
                             drop := true
                         else
@@ -509,10 +511,10 @@ if array.size(slT) > 0
                  border_color = idColor,
                  bgcolor      = color.new(idColor, 85))
 
-        if not na(idObj) and not idObj.touched
+        if not na(idObj) and not idObj.frozen
             box.set_right(idObj.bx, sT)
             if sH >= idObj.bot and sL <= idObj.top
-                idObj.touched := true
+                idObj.frozen := true
 
         if not na(idObj) and not idObj.eaten
             if idObj.side > 0 ? sL < idObj.bot : sH > idObj.top
@@ -871,7 +873,7 @@ if showDiag and barstate.islast
     if array.size(mObjects) > 0
         for i = 0 to array.size(mObjects) - 1
             o = array.get(mObjects, i)
-            mList := mList + (i > 0 ? "    " : "") + str.tostring(o.bot, format.mintick) + "–" + str.tostring(o.top, format.mintick) + " " + sided(o.side) + (not o.active ? " trimming" : o.touched ? " touched" : " live") + (o.eaten ? " · absorbed" : "")
+            mList := mList + (i > 0 ? "    " : "") + str.tostring(o.bot, format.mintick) + "–" + str.tostring(o.top, format.mintick) + " " + sided(o.side) + (not o.active ? " trimming" : o.frozen ? " touched" : " live") + (o.eaten ? " · absorbed" : "")
 
     diagRow(0,  "chart",         timeframe.period + (coarse ? "  split" : "  bucketed"))
     diagRow(1,  "slices / bar",  str.tostring(array.size(slT)))
@@ -883,7 +885,7 @@ if showDiag and barstate.islast
     diagRow(7,  "ID source",     stamp(idSrcTime) + "  " + sided(idSrcSide))
     diagRow(8,  "ID born",       na(idObj) ? "—" : stamp(idObj.born))
     diagRow(9,  "ID range",      na(idObj) ? "no box" : str.tostring(idObj.bot, format.mintick) + " – " + str.tostring(idObj.top, format.mintick) + "  " + sided(idObj.side))
-    diagRow(10, "ID state",      na(idObj) ? "—" : (idObj.touched ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
+    diagRow(10, "ID state",      na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
     diagRow(11, "structure",     not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
     diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
     diagRow(13, "last CHoCH",    not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
