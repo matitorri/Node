@@ -27,6 +27,11 @@ riskSize        = floor(riskBudget ÷ riskPerContract), capped
 **The budget** is either a percentage of equity or a fixed amount of
 account currency.
 
+The account starts at **50,000**, declared in the `strategy()` call rather
+than left to TradingView's million-dollar default, so a percentage budget
+means something the first time the script is pasted. It can still be
+overridden in the script's Properties tab.
+
 **The equity** is either the current equity, which compounds — the
 position grows after a win and shrinks after a loss — or the initial
 capital, which keeps the risk flat whatever the account has done since.
