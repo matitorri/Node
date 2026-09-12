@@ -15,7 +15,7 @@ DIST = Path("dist")
 KINDS = ("indicator", "strategy")
 
 
-SHARED = ("model.vobjects", "model.structure", "setup", "signal")
+SHARED = ("model.vobjects", "model.structure", "setup", "signal", "diagnostics")
 
 # What each script adds on top of the shared layers. The indicator draws;
 # the strategy trades, and only it has a book to manage.

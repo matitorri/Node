@@ -22,7 +22,7 @@ SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // Groups, in the order they appear in the settings dialog.
 G_COMMON = "Common"
-G_HOURS  = "Trading hours"
+G_PM     = "Portfolio · Position manager"
 G_M      = "V Objects · M"
 G_ID     = "V Objects · ID"
 G_NY     = "V Objects · NY ID"
@@ -54,7 +54,7 @@ nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", gro
 // waiting to fire at ten; the position manager will not open a position
 // outside them either. Neither owns the hours, which is why they are here.
 
-tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_HOURS,
+tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
      tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
 // The session string reads "0930-1700", so the two ends sit at fixed offsets

@@ -81,8 +81,6 @@ if not na(riskPerContract) and riskPerContract > 0
 // known number of attempts regardless of what each one was worth, and the
 // longest day the defaults allow is two.
 
-G_PM = "Portfolio · Position manager"
-
 maxOpen = input.int(1, "Positions at a time", minval = 1, group = G_PM,
      tooltip = "A signal that arrives with the book already this full is ignored. It is not remembered: nothing is taken later on its behalf.")
 lossCut = input.int(2, "Losing trades that end the day", minval = 0, group = G_PM,
@@ -124,3 +122,18 @@ pmInHours = pmBarMin >= tradingFrom and pmBarMin < tradingTo
 // alone when the day ends or the hours close: the gate is on opening, not
 // on holding.
 pmAllows = pmInHours and not pmDayOver and strategy.opentrades < maxOpen
+
+// ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
+// The rows the shared table cannot carry, because the indicator has no book
+// and no money at stake. Appended to the same table, below the last row the
+// shared section wrote.
+
+if showDiag and barstate.islast
+    diagRow(16, "hours",      (pmInHours ? "in" : "out") + "   " + clock(tradingFrom) + " – " + clock(tradingTo))
+    diagRow(17, "budget",     str.tostring(riskBudget, "#.##") + (riskMode == RISK_FIXED ? "  fixed" : "  " + str.tostring(riskQty) + "% of " + str.tostring(riskEquity, "#.##")))
+    diagRow(18, "per contract", na(riskPerContract) ? "— no stop yet" : str.tostring(riskPerContract, "#.##"))
+    diagRow(19, "size",       str.tostring(riskSize) + (riskSize >= maxContracts ? "  at ceiling" : ""))
+    diagRow(20, "open",       str.tostring(strategy.opentrades) + " / " + str.tostring(maxOpen))
+    diagRow(21, "session W/L", str.tostring(pmWins) + " / " + str.tostring(pmLosses))
+    diagRow(22, "day",        not pmDayOver ? "open" : pmWins >= winCut and winCut > 0 ? "closed · won" : "closed · lost")
+    diagRow(23, "allows",     pmAllows ? "yes" : not pmInHours ? "no · outside hours" : pmDayOver ? "no · day is over" : "no · book is full")

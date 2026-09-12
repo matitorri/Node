@@ -26,7 +26,7 @@ SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // Groups, in the order they appear in the settings dialog.
 G_COMMON = "Common"
-G_HOURS  = "Trading hours"
+G_PM     = "Portfolio · Position manager"
 G_M      = "V Objects · M"
 G_ID     = "V Objects · ID"
 G_NY     = "V Objects · NY ID"
@@ -58,7 +58,7 @@ nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", gro
 // waiting to fire at ten; the position manager will not open a position
 // outside them either. Neither owns the hours, which is why they are here.
 
-tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_HOURS,
+tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
      tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
 // The session string reads "0930-1700", so the two ends sit at fixed offsets
@@ -893,6 +893,54 @@ if not na(setupObj)
 signalFired = structChoch and not na(setupObj) and structChDir == setupObj.side
 signalDir   = structChDir
 
+// ═════════════════════════════  DIAGNOSTICS  ════════════════════════════
+// A reading of the state behind the drawings, so a disagreement between the
+// chart and the code can be settled by looking rather than by inference.
+//
+// Shared, because most of what it reports is shared: the feeds, the grid,
+// the objects, the setup and the signal all exist in both scripts. What is
+// not shared appends to the same table further down — the strategy's book
+// has rows of its own, and the indicator has no book to give them.
+//
+// Row numbers are fixed rather than running, so a section can add rows
+// without knowing what any other section did.
+
+stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
+sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
+clock(int m) =>
+    h  = math.floor(m / 60)
+    mm = m % 60
+    (h < 10 ? "0" : "") + str.tostring(h) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm)
+
+// Sized for every section that could write into it. A row nobody fills is
+// never drawn: the table is made of the cells that exist, not of its bounds.
+var table diag = table.new(position.top_right, 2, 24, border_width = 1,
+     frame_width = 1, frame_color = color.gray)
+
+diagRow(int r, string k, string v) =>
+    table.cell(diag, 0, r, k, text_color = color.gray, text_size = size.tiny,
+         text_halign = text.align_right, bgcolor = color.new(color.black, 85))
+    table.cell(diag, 1, r, v, text_color = color.white, text_size = size.tiny,
+         text_halign = text.align_left, bgcolor = color.new(color.black, 85))
+
+if showDiag and barstate.islast
+    diagRow(0,  "chart",         timeframe.period + (coarse ? "  split" : "  bucketed"))
+    diagRow(1,  "slices / bar",  str.tostring(array.size(slT)))
+    diagRow(2,  "bar",           stamp(time))
+    diagRow(3,  "H4 dayNum",     str.tostring(dayNum) + (isNewSession ? "   turning" : ""))
+    diagRow(4,  "H4 sess date",  na(lastSessDate) ? "—" : str.tostring(lastSessDate))
+    diagRow(5,  "last turnover", stamp(lastTurnT))
+    diagRow(6,  "M alive",       str.tostring(array.size(mObjects)))
+    diagRow(7,  "ID source",     stamp(idSrcTime) + "  " + sided(idSrcSide))
+    diagRow(8,  "ID born",       na(idObj) ? "—" : stamp(idObj.born))
+    diagRow(9,  "ID range",      na(idObj) ? "no box" : str.tostring(idObj.bot, format.mintick) + " – " + str.tostring(idObj.top, format.mintick) + "  " + sided(idObj.side))
+    diagRow(10, "ID state",      na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
+    diagRow(11, "structure",     not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
+    diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
+    diagRow(13, "last CHoCH",    not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
+    diagRow(14, "setup",         not mSetupReady ? "M touch · needs M objects" : na(setupObj) ? "M touch · idle" : "M touch · holding " + str.tostring(setupObj.bot, format.mintick) + " – " + str.tostring(setupObj.top, format.mintick))
+    diagRow(15, "signal",        not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
+
 // ═══════════════════════════════  STRATEGY  ═════════════════════════════
 // What to do about it: which way, where in, where out. One trade idea, and
 // nothing about money — how large the position may be is decided below,
@@ -998,8 +1046,6 @@ if not na(riskPerContract) and riskPerContract > 0
 // known number of attempts regardless of what each one was worth, and the
 // longest day the defaults allow is two.
 
-G_PM = "Portfolio · Position manager"
-
 maxOpen = input.int(1, "Positions at a time", minval = 1, group = G_PM,
      tooltip = "A signal that arrives with the book already this full is ignored. It is not remembered: nothing is taken later on its behalf.")
 lossCut = input.int(2, "Losing trades that end the day", minval = 0, group = G_PM,
@@ -1041,3 +1087,18 @@ pmInHours = pmBarMin >= tradingFrom and pmBarMin < tradingTo
 // alone when the day ends or the hours close: the gate is on opening, not
 // on holding.
 pmAllows = pmInHours and not pmDayOver and strategy.opentrades < maxOpen
+
+// ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
+// The rows the shared table cannot carry, because the indicator has no book
+// and no money at stake. Appended to the same table, below the last row the
+// shared section wrote.
+
+if showDiag and barstate.islast
+    diagRow(16, "hours",      (pmInHours ? "in" : "out") + "   " + clock(tradingFrom) + " – " + clock(tradingTo))
+    diagRow(17, "budget",     str.tostring(riskBudget, "#.##") + (riskMode == RISK_FIXED ? "  fixed" : "  " + str.tostring(riskQty) + "% of " + str.tostring(riskEquity, "#.##")))
+    diagRow(18, "per contract", na(riskPerContract) ? "— no stop yet" : str.tostring(riskPerContract, "#.##"))
+    diagRow(19, "size",       str.tostring(riskSize) + (riskSize >= maxContracts ? "  at ceiling" : ""))
+    diagRow(20, "open",       str.tostring(strategy.opentrades) + " / " + str.tostring(maxOpen))
+    diagRow(21, "session W/L", str.tostring(pmWins) + " / " + str.tostring(pmLosses))
+    diagRow(22, "day",        not pmDayOver ? "open" : pmWins >= winCut and winCut > 0 ? "closed · won" : "closed · lost")
+    diagRow(23, "allows",     pmAllows ? "yes" : not pmInHours ? "no · outside hours" : pmDayOver ? "no · day is over" : "no · book is full")
