@@ -31,39 +31,53 @@ timeframe is part of the specification rather than a preference.
 
 At market, on the change of character.
 
+### The day's extremes
+
+Both the loss and the object target are the session's extreme quotes, so
+they are worth stating once.
+
+The day is the exchange session, the one that opens at 18:00 ET, and the
+extremes are read straight off the chart against a clock of their own.
+
+They are **not** reset on `isNewSession`. That comes from the H4 feed,
+which reports a turnover at the close of the candle that opened the
+session — four hours late. The extremes then belonged to a day running
+22:00 to 22:00, which is nobody's day, and the loss was placed against
+it.
+
+They are not accumulated off the five-minute grid either. A slice is only
+published when its bucket closes, so on an M1 chart the extremes would
+trail the signal by up to four minutes and miss a low price just made.
+
+The session is turned into a plain calendar date by pushing 18:00 ET to
+midnight, which handles daylight saving without a special case.
+
 ### Loss
 
-The day's extreme on the side the trade is exposed to: a long is wrong
-below the day's low, a short above the day's high.
-
-The day is the exchange session, the one that opens at 18:00 ET, and its
-extremes are accumulated off the five-minute grid rather than read from a
-daily feed — the same day the rest of the model means, and not subject to
-the daily series freezing around a holiday.
+The extreme the trade is exposed to: a long is wrong at the cheapest
+quote of the day, a short at the dearest.
 
 Fixing the level at execution rather than trailing the session costs
 nothing: for a long, the day's low cannot extend without price passing
 through the loss first.
 
-If the day's extreme *is* the execution — price is making the low as the
+If that extreme *is* the execution — price is making the low as the
 signal fires — there is no distance, and no position is taken.
 
 ### Target
 
 Two rules, chosen by input.
 
-**Object** exits at the nearest thing in the way:
-
-- an M object **facing** the trade — opposite side, still alive, beyond
-  the execution — at its near edge, the one price reaches first;
-- the day's extreme on the other side, if it is still ahead of the
-  execution. This leg can be switched off, leaving only the M objects.
-
-Whichever is nearer wins. If neither exists the target is empty and the
-position ends on the loss or on the hours.
+**Object** exits at the day's other extreme: a long at the dearest quote
+of the session, a short at the cheapest. The two levels therefore bound
+the trade on both sides.
 
 **R multiple** exits at a fixed multiple of the distance from the
 execution to the loss.
+
+An object target that is not ahead of the execution — price making the
+day's high as a long fires — leaves the target empty, and the position
+ends on the loss or on the hours.
 
 ### Time exit
 

@@ -8,44 +8,43 @@ TGT_R      = "R multiple"
 
 targetMode = input.string(TGT_OBJECT, "Target", options = [TGT_OBJECT, TGT_R],
      group = G_STRATEGIES,
-     tooltip = "Object exits at the nearest thing in the way: the day's extreme, or an M object facing the trade. R multiple exits at a fixed multiple of the distance to the loss.")
+     tooltip = "Object exits at the day's other extreme: a long at the dearest quote of the day, a short at the cheapest. R multiple exits at a fixed multiple of the distance to the loss.")
 targetR    = input.float(2.0, "R multiple", minval = 0.1, step = 0.1, group = G_STRATEGIES,
      tooltip = "Idle under the Object target. R is the distance from the execution to the loss.")
-useDayEdge = input.bool(true, "Include the day's extreme", group = G_STRATEGIES,
-     tooltip = "Under the Object target, let the day's high close a long and the day's low close a short, whichever comes first against an opposing M object. Off leaves only the M objects.")
 
 // ─────────────────────────  THE DAY'S EXTREMES  ─────────────────────────
-// Off the grid rather than a daily feed: the day is the exchange session,
-// which is what the rest of the model already means by one.
+// The dearest and cheapest quotes of the session, read straight off the
+// chart against a clock of their own.
+//
+// Not off isNewSession: that comes from the H4 feed, which reports a
+// turnover at the close of the candle that opened the session — four hours
+// late. The extremes then belonged to a day running 22:00 to 22:00, which
+// is nobody's day.
+//
+// Not off the grid either: a five-minute slice is only published when its
+// bucket closes, so on an M1 chart the extremes would trail the signal by
+// up to four minutes and miss a low price just made.
 
+// The session a bar belongs to. Pushing 18:00 ET to midnight turns the
+// exchange session into a plain calendar date, daylight saving included.
+sessionDay(int t) =>
+    shifted = t + (1440 - SESS_OPEN_MIN) * 60000
+    year(shifted, NY_TZ) * 10000 + month(shifted, NY_TZ) * 100 + dayofmonth(shifted, NY_TZ)
+
+var int   daySess = na
 var float dayHigh = na
 var float dayLow  = na
 
-if isNewSession
-    dayHigh := na
-    dayLow  := na
-
-if array.size(slT) > 0
-    for k = 0 to array.size(slT) - 1
-        sH = array.get(slH, k)
-        sL = array.get(slL, k)
-        dayHigh := na(dayHigh) ? sH : math.max(dayHigh, sH)
-        dayLow  := na(dayLow)  ? sL : math.min(dayLow,  sL)
+barSess = sessionDay(time)
+if na(daySess) or barSess != daySess
+    daySess := barSess
+    dayHigh := high
+    dayLow  := low
+else
+    dayHigh := math.max(dayHigh, high)
+    dayLow  := math.min(dayLow,  low)
 
 // ─────────────────────────  M REVERSION  ────────────────────────────────
-
-// The near edge of the closest M object facing the trade, past a price.
-// Facing means the opposite side: a long is closed by supply.
-oppositeEdge(int dir, float from) =>
-    float best = na
-    if array.size(mObjects) > 0
-        for i = 0 to array.size(mObjects) - 1
-            obj = array.get(mObjects, i)
-            if obj.active and not obj.eaten and obj.side == -dir
-                edge = dir > 0 ? obj.bot : obj.top
-                if (dir > 0 ? edge > from : edge < from) and (na(best) or (dir > 0 ? edge < best : edge > best))
-                    best := edge
-    best
 
 int    tradeDir    = 0                  // +1 long, -1 short, 0 nothing
 float  tradeExec   = na
@@ -53,13 +52,16 @@ float  tradeLoss   = na                 // where the idea is wrong
 float  tradeTarget = na
 string tradeFrom   = ""                 // which rule set the target
 
+// The trade is bounded by the day it happens in: a long risks the cheapest
+// quote of the session and aims at the dearest, a short the other way.
 if signalFired
     float exec = close
-    float loss = signalDir > 0 ? dayLow : dayHigh
+    float loss = signalDir > 0 ? dayLow  : dayHigh
+    float aim  = signalDir > 0 ? dayHigh : dayLow
 
-    // The day's extreme can only sit on the wrong side of the execution by
-    // being the execution: price is making it as the signal fires. No
-    // distance, no position.
+    // An extreme can only sit on the wrong side of the execution by being
+    // the execution: price is making it as the signal fires. No distance,
+    // no position.
     if not na(loss) and (signalDir > 0 ? loss < exec : loss > exec)
         tradeDir  := signalDir
         tradeExec := exec
@@ -68,16 +70,9 @@ if signalFired
         if targetMode == TGT_R
             tradeTarget := exec + signalDir * targetR * math.abs(exec - loss)
             tradeFrom   := str.tostring(targetR) + "R"
-        else
-            float edge    = oppositeEdge(signalDir, exec)
-            float dayEdge = signalDir > 0 ? dayHigh : dayLow
-            if not na(edge)
-                tradeFrom := "opposite M"
-            if useDayEdge and not na(dayEdge) and (signalDir > 0 ? dayEdge > exec : dayEdge < exec)
-                if na(edge) or (signalDir > 0 ? dayEdge < edge : dayEdge > edge)
-                    edge      := dayEdge
-                    tradeFrom := "day extreme"
-            tradeTarget := edge
+        else if not na(aim) and (signalDir > 0 ? aim > exec : aim < exec)
+            tradeTarget := aim
+            tradeFrom   := signalDir > 0 ? "day high" : "day low"
 
 // ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
 
