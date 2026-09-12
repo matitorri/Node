@@ -862,23 +862,64 @@ if not na(setupObj)
 //
 // It is the change of character the structure model publishes, and it is
 // the same for every setup — which is why it lives here and not inside
-// one. How it meets the region the setup chose, in particular whether the
-// direction has to agree with that region's side, is not settled yet.
+// one. Two things qualify it:
 //
-// The structure section already marks it on the chart. Drawing it again
-// here would only double the triangles.
+//   There has to be a region in play. A change of character with no setup
+//   holding is a fact about the market, not a signal.
+//
+//   Its direction has to agree with that region's side. An M object that
+//   came from a bullish candle is demand, and the setup is a reversion to
+//   it, so only a turn upwards on it means anything.
+//
+// Nothing expires. While the setup holds the region, a change of character
+// hours after the touch still counts.
+//
+// The structure section already marks the raw change of character. This is
+// the qualified one, and the strategy is what draws it.
 
-signalFired = structChoch
+signalFired = structChoch and not na(setupObj) and structChDir == setupObj.side
 signalDir   = structChDir
 
 // ═══════════════════════════════  STRATEGY  ═════════════════════════════
-// What to do about it: entry, stop, target, size. The layer that turns a
-// signal into an order, and the only one the indicator does not share.
+// What to do about it: which way, where in, where out. One trade idea, and
+// nothing about money — how large the position may be is decided below,
+// where the rest of the book is visible.
 //
-// It reads setupObj for the region in play and signalFired for the moment.
+// It publishes an intention, not an order:
+//
+//   tradeDir     +1 long, -1 short, 0 nothing to do on this bar
+//   tradeEntry   the price it wants in at
+//   tradeStop    where the idea is wrong
+//   tradeTarget  where it is done
+//
 // Several strategies could sit on the same setup and the same signal and
-// differ only in the management, which is why that boundary is kept.
+// differ only in those four, which is why the boundary is kept.
 //
-// Empty on purpose. A strategy with no orders still compiles and still
-// draws the model, which is what makes it worth looking at before there
-// are any rules.
+// Empty until the first one is specified.
+
+int   tradeDir    = 0
+float tradeEntry  = na
+float tradeStop   = na
+float tradeTarget = na
+
+// ═══════════════════════════════  PORTFOLIO  ════════════════════════════
+// The last word: how much, and whether at all. It reads the intention the
+// strategy published and turns it into an order, or refuses it.
+//
+// Two concerns, kept apart because they answer different questions:
+//
+//   Risk management — how much this position may lose. The strategy says
+//   where the stop is; the distance to it and the risk allowed decide the
+//   size. Changing how risk is taken happens here, once, for every
+//   strategy there will ever be.
+//
+//   Position manager — whether this one may be opened. What is already
+//   running is not something a strategy can see, so rules that depend on
+//   the book live here: no pyramiding, a ceiling on open positions, a stop
+//   for the day. A strategy that carried its own copy of those would
+//   eventually be the one missing a rule.
+//
+// This is the only layer besides the strategy that the indicator does not
+// share. There are no positions to manage in an indicator.
+//
+// Empty until the rules are specified.

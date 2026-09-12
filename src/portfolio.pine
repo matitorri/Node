@@ -1,0 +1,21 @@
+// ═══════════════════════════════  PORTFOLIO  ════════════════════════════
+// The last word: how much, and whether at all. It reads the intention the
+// strategy published and turns it into an order, or refuses it.
+//
+// Two concerns, kept apart because they answer different questions:
+//
+//   Risk management — how much this position may lose. The strategy says
+//   where the stop is; the distance to it and the risk allowed decide the
+//   size. Changing how risk is taken happens here, once, for every
+//   strategy there will ever be.
+//
+//   Position manager — whether this one may be opened. What is already
+//   running is not something a strategy can see, so rules that depend on
+//   the book live here: no pyramiding, a ceiling on open positions, a stop
+//   for the day. A strategy that carried its own copy of those would
+//   eventually be the one missing a rule.
+//
+// This is the only layer besides the strategy that the indicator does not
+// share. There are no positions to manage in an indicator.
+//
+// Empty until the rules are specified.

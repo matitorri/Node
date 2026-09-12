@@ -1,0 +1,21 @@
+// ═══════════════════════════════  STRATEGY  ═════════════════════════════
+// What to do about it: which way, where in, where out. One trade idea, and
+// nothing about money — how large the position may be is decided below,
+// where the rest of the book is visible.
+//
+// It publishes an intention, not an order:
+//
+//   tradeDir     +1 long, -1 short, 0 nothing to do on this bar
+//   tradeEntry   the price it wants in at
+//   tradeStop    where the idea is wrong
+//   tradeTarget  where it is done
+//
+// Several strategies could sit on the same setup and the same signal and
+// differ only in those four, which is why the boundary is kept.
+//
+// Empty until the first one is specified.
+
+int   tradeDir    = 0
+float tradeEntry  = na
+float tradeStop   = na
+float tradeTarget = na

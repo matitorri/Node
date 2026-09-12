@@ -4,11 +4,20 @@
 //
 // It is the change of character the structure model publishes, and it is
 // the same for every setup — which is why it lives here and not inside
-// one. How it meets the region the setup chose, in particular whether the
-// direction has to agree with that region's side, is not settled yet.
+// one. Two things qualify it:
 //
-// The structure section already marks it on the chart. Drawing it again
-// here would only double the triangles.
+//   There has to be a region in play. A change of character with no setup
+//   holding is a fact about the market, not a signal.
+//
+//   Its direction has to agree with that region's side. An M object that
+//   came from a bullish candle is demand, and the setup is a reversion to
+//   it, so only a turn upwards on it means anything.
+//
+// Nothing expires. While the setup holds the region, a change of character
+// hours after the touch still counts.
+//
+// The structure section already marks the raw change of character. This is
+// the qualified one, and the strategy is what draws it.
 
-signalFired = structChoch
+signalFired = structChoch and not na(setupObj) and structChDir == setupObj.side
 signalDir   = structChDir

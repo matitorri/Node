@@ -15,15 +15,19 @@ DIST = Path("dist")
 KINDS = ("indicator", "strategy")
 
 
+SHARED = ("model.vobjects", "model.structure", "setup", "signal")
+
+# What each script adds on top of the shared layers. The indicator draws;
+# the strategy trades, and only it has a book to manage.
+OWN = {
+    "indicator": ("indicator.tail",),
+    "strategy":  ("strategy", "portfolio"),
+}
+
+
 def build(kind: str) -> Path:
-    parts = [
-        SRC / f"{kind}.head.pine",
-        SRC / "model.vobjects.pine",
-        SRC / "model.structure.pine",
-        SRC / "setup.pine",
-        SRC / "signal.pine",
-        SRC / f"{kind}.tail.pine",
-    ]
+    names = (f"{kind}.head", *SHARED, *OWN[kind])
+    parts = [SRC / f"{name}.pine" for name in names]
     body = "\n\n".join(p.read_text().strip("\n") for p in parts) + "\n"
     out = DIST / f"node_{kind}.pine"
     out.write_text(body)
