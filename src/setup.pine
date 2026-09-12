@@ -22,12 +22,36 @@ bool        setupTook = false           // it took one on this bar
 // reached: the setup sits above the strategy and cannot see a position.
 // Keeping a second trade from opening while one is live belongs down there.
 
-G_M_SETUP = "Setup · M touch"
+G_SETUPS = "Setups"
 
-enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
+enableMSetup = input.bool(true, "Enable the M touch setup", group = G_SETUPS,
      tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
 
 mSetupReady = enableMSetup and enableM   // what it needs from the model
+
+// ─────────────────────────  TRADING HOURS  ──────────────────────────────
+// When the system is allowed to work. More than one layer obeys it — this
+// setup will not arm a region outside the hours, so a touch at three in the
+// morning cannot sit there waiting to fire at ten, and the position manager
+// will not open outside them either — so it is declared once and read by
+// both. It belongs to neither, which is why it carries the position
+// manager's group rather than this one's.
+//
+// It sits here for a reason that is only about the settings dialog: Pine
+// places a group where its first input appears, and declared any earlier
+// the whole Portfolio section would open above the model.
+
+G_PM = "Portfolio · Position management"
+
+tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
+     tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
+
+// The session string reads "0930-1700", so the two ends sit at fixed offsets
+// whatever day mask may follow them.
+hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
+
+tradingFrom = hhmm(str.substring(tradingHours, 0, 4))
+tradingTo   = hhmm(str.substring(tradingHours, 5, 9))
 
 if isNewSession
     setupObj := na

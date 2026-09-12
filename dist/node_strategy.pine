@@ -24,12 +24,20 @@ SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // ─────────────────────────────  INPUTS  ─────────────────────────────────
 
-// Groups, in the order they appear in the settings dialog.
+// Groups in the settings dialog. Pine has no nesting, so the tree is spelled
+// out in the names and held by the order: a group appears where its first
+// input is declared, which is why each one is named beside the block that
+// owns it and why the blocks are laid out in the order they should read.
+//
+//   Common
+//   Objects · V objects
+//   Objects · Pattern objects
+//   Setups
+//   Portfolio · Position management
+//   Portfolio · Risk management
+
 G_COMMON = "Common"
-G_PM     = "Portfolio · Position manager"
-G_M      = "V Objects · M"
-G_ID     = "V Objects · ID"
-G_NY     = "V Objects · NY ID"
+G_V      = "Objects · V objects"
 
 excludedInput = input.text_area(
      "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
@@ -39,34 +47,17 @@ warnGrid = input.bool(true, "Warn when the chart does not fit the grid", group =
 showDiag = input.bool(false, "Diagnostics table", group = G_COMMON,
      tooltip = "Reports the state behind the drawings on the last bar: what the feeds say the session is, when the last turnover happened, and where each object stands.")
 
-enableM      = input.bool(true, "Enable M objects", group = G_M,
+enableM      = input.bool(true, "Enable M objects", group = G_V,
      tooltip = "Off means no M object is ever created, not merely hidden. It also removes one of the two ways a NY ID object can be triggered, the other being an ID object getting absorbed.")
-markColor    = input.color(color.new(color.orange, 0), "M object color", group = G_M)
-lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1, group = G_M,
+markColor    = input.color(color.new(color.orange, 0), "M object color", group = G_V)
+lifetimeDays = input.int(3, "M object lifetime (days)", minval = 1, group = G_V,
      tooltip = "Counted from the source candle. An untouched M object is removed once it expires.")
 
-enableId     = input.bool(true, "Enable ID objects", group = G_ID)
-idColor      = input.color(color.new(color.blue, 0), "ID object color", group = G_ID)
+enableId     = input.bool(true, "Enable ID objects", group = G_V)
+idColor      = input.color(color.new(color.blue, 0), "ID object color", group = G_V)
 
-enableNyId   = input.bool(true, "Enable NY ID object", group = G_NY)
-nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_NY)
-
-// ─────────────────────────  TRADING HOURS  ──────────────────────────────
-// When the system is allowed to work, declared once because more than one
-// layer obeys it and they must obey the same thing. The setup will not arm
-// a region outside them, so a touch at three in the morning cannot sit there
-// waiting to fire at ten; the position manager will not open a position
-// outside them either. Neither owns the hours, which is why they are here.
-
-tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
-     tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
-
-// The session string reads "0930-1700", so the two ends sit at fixed offsets
-// whatever day mask may follow them.
-hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
-
-tradingFrom = hhmm(str.substring(tradingHours, 0, 4))
-tradingTo   = hhmm(str.substring(tradingHours, 5, 9))
+enableNyId   = input.bool(true, "Enable NY ID object", group = G_V)
+nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_V)
 
 // ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
 // The skip list, parsed once into YYYYMMDD numbers. Separators and any
@@ -704,7 +695,7 @@ if array.size(slT) > 0
 
 STRUCT_TF = "1"
 
-G_STRUCT = "Market Structure"
+G_STRUCT = "Objects · Pattern objects"
 
 enableStruct   = input.bool(true, "Enable market structure", group = G_STRUCT,
      tooltip = "Off publishes nothing: no levels, no direction, no change of character for anything downstream to read.")
@@ -839,12 +830,36 @@ bool        setupTook = false           // it took one on this bar
 // reached: the setup sits above the strategy and cannot see a position.
 // Keeping a second trade from opening while one is live belongs down there.
 
-G_M_SETUP = "Setup · M touch"
+G_SETUPS = "Setups"
 
-enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
+enableMSetup = input.bool(true, "Enable the M touch setup", group = G_SETUPS,
      tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
 
 mSetupReady = enableMSetup and enableM   // what it needs from the model
+
+// ─────────────────────────  TRADING HOURS  ──────────────────────────────
+// When the system is allowed to work. More than one layer obeys it — this
+// setup will not arm a region outside the hours, so a touch at three in the
+// morning cannot sit there waiting to fire at ten, and the position manager
+// will not open outside them either — so it is declared once and read by
+// both. It belongs to neither, which is why it carries the position
+// manager's group rather than this one's.
+//
+// It sits here for a reason that is only about the settings dialog: Pine
+// places a group where its first input appears, and declared any earlier
+// the whole Portfolio section would open above the model.
+
+G_PM = "Portfolio · Position management"
+
+tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_PM,
+     tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
+
+// The session string reads "0930-1700", so the two ends sit at fixed offsets
+// whatever day mask may follow them.
+hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
+
+tradingFrom = hhmm(str.substring(tradingHours, 0, 4))
+tradingTo   = hhmm(str.substring(tradingHours, 5, 9))
 
 if isNewSession
     setupObj := na

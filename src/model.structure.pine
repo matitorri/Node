@@ -28,7 +28,7 @@
 
 STRUCT_TF = "1"
 
-G_STRUCT = "Market Structure"
+G_STRUCT = "Objects · Pattern objects"
 
 enableStruct   = input.bool(true, "Enable market structure", group = G_STRUCT,
      tooltip = "Off publishes nothing: no levels, no direction, no change of character for anything downstream to read.")
