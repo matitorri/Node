@@ -198,7 +198,10 @@ type VObject
     float bot    = na
     int   side   = 0                    // +1 long, -1 short
     int   born   = na                   // when its box was drawn
-    bool  frozen = false                // the box stopped growing
+    bool  touched = false               // price has entered it. An event,
+                                        // latched: what happens after does
+                                        // not clear it, and the box stops
+                                        // growing because of it
     bool  eaten  = false                // the far edge is gone, so is the region
     bool  active = false                // M only: trimmed and touchable
     float wMin   = na                   // M only: trim window extremes
@@ -245,10 +248,6 @@ h4DailyMax() =>
 var array<VObject> mObjects = array.new<VObject>()
 var VObject prov = na                   // winner of the session in progress
 var int lastTurnT = na                  // when the session last turned over
-
-// Which M object price entered on each slice, if any. Only the lifecycle
-// below is in a position to see it happen, so it publishes it.
-var array<VObject> slTouch = array.new<VObject>()
 
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 
@@ -314,11 +313,8 @@ if nyOpened() and not array.includes(excludedDates, sessionDay(time)) and array.
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
-array.clear(slTouch)
-
 if array.size(slT) > 0
     for k = 0 to array.size(slT) - 1
-        array.push(slTouch, na)
         sT   = array.get(slT, k)
         sH   = array.get(slH, k)
         sL   = array.get(slL, k)
@@ -341,7 +337,7 @@ if array.size(slT) > 0
                 // there. The box goes on projecting, or the day would read as
                 // a touch that never happened.
                 if sSkp
-                    if not obj.frozen
+                    if not obj.touched
                         box.set_right(obj.bx, sT)
                 else
                     // The window closes at the New York open and nowhere else, so
@@ -349,7 +345,7 @@ if array.size(slT) > 0
                     // again and is trimmed afresh at the next one. Between the two
                     // it is not touchable, which is what keeps a visit at three in
                     // the morning from settling a box the day had yet to shape.
-                    if sNew and not obj.frozen
+                    if sNew and not obj.touched
                         obj.active := false
                         obj.wMin   := na
                         obj.wMax   := na
@@ -365,21 +361,18 @@ if array.size(slT) > 0
                         box.set_right(obj.bx, sT)
 
                     if not drop and obj.active
-                        // Being inside the region is the event, and it is published
-                        // every slice it holds. Freezing the box is a drawing
-                        // matter and happens once; tying the two together spent an
-                        // object's only chance to arm a setup on its first touch,
-                        // whatever hour that was.
+                        // Entering the region is the event, and it is latched
+                        // on the object. What price does afterwards does not
+                        // undo it: a region that has been touched stays a
+                        // candidate for the rest of its life.
                         inside = sH >= obj.bot and sL <= obj.top
-                        if inside
-                            array.set(slTouch, k, obj)
 
-                        if obj.frozen
+                        if obj.touched
                             if sT >= obj.expire
                                 drop := true
                         else if inside
                             box.set_right(obj.bx, sT)
-                            obj.frozen := true
+                            obj.touched := true
                         else if sT >= obj.expire
                             box.delete(obj.bx)
                             drop := true
@@ -490,10 +483,10 @@ if array.size(slT) > 0
                  border_color = idColor,
                  bgcolor      = color.new(idColor, 85))
 
-        if not na(idObj) and not idObj.frozen
+        if not na(idObj) and not idObj.touched
             box.set_right(idObj.bx, sT)
             if sH >= idObj.bot and sL <= idObj.top
-                idObj.frozen := true
+                idObj.touched := true
 
         if not na(idObj) and not idObj.eaten
             if idObj.side > 0 ? sL < idObj.bot : sH > idObj.top
