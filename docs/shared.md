@@ -35,6 +35,8 @@ Resolved per slice, into parallel arrays:
 
 - `slOpen` marks the first slice at or past 09:30 ET. It closes an M
   object's trim window and gives birth to an ID object.
+- `slNewSess` marks the first slice of a new exchange session, 18:00 ET.
+  It reopens the trim window of an M object still untouched.
 - `slInNy` covers the New York stretch, 09:00 to 17:00 ET.
 - `slSkip` marks the sessions named in the skip list.
 - `slEvt` is raised by whichever object price absorbs, and read by the NY

@@ -52,6 +52,17 @@ part below the window's low, a bearish one the part above its high. If
 nothing survives, the region was fully absorbed before it could be used
 and is dropped.
 
+It happens **again at every session open** the region reaches untouched.
+The window reopens when the exchange session does, runs overnight, and
+closes at the next New York open, so a region that survives a day comes
+back smaller. Between those two moments the region is not touchable —
+which is what keeps a visit at three in the morning from settling a box
+the day has yet to shape. Trimmed once and left alone, an old region
+would be traded at yesterday's edge.
+
+Only a region that has not been touched keeps trimming. Once price has
+entered it the box is settled and the range is what it is.
+
 **Lifetime.** Counted from the source candle, three days by default. An
 untouched M object is removed when it expires. A touched one stays on the
 books until it expires or is absorbed.

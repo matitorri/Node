@@ -129,15 +129,24 @@ else
 
 // ─────────────────────────  NEW YORK CLOCK  ─────────────────────────────
 
+// The session a moment belongs to. Pushing 18:00 ET to midnight turns the
+// exchange session into a plain calendar date, daylight saving included.
+sessionDay(int t) =>
+    shifted = t + (1440 - SESS_OPEN_MIN) * 60000
+    year(shifted, NY_TZ) * 10000 + month(shifted, NY_TZ) * 100 + dayofmonth(shifted, NY_TZ)
+
 var array<bool> slOpen = array.new<bool>()
+var array<bool> slNewSess = array.new<bool>()
 var array<bool> slInNy = array.new<bool>()
 var array<bool> slSkip = array.new<bool>()
 var array<bool> slEvt  = array.new<bool>()
 
 var bool nyOpenSeen = false
 var int  lastNyDay  = na
+var int  lastSess   = na
 
 array.clear(slOpen)
+array.clear(slNewSess)
 array.clear(slInNy)
 array.clear(slSkip)
 array.clear(slEvt)
@@ -155,6 +164,9 @@ if array.size(slT) > 0
         isOpen = not nyOpenSeen and mins >= NY_OPEN_MIN and mins < NY_END_MIN
         if isOpen
             nyOpenSeen := true
+        sess = sessionDay(t)
+        array.push(slNewSess, not na(lastSess) and sess != lastSess)
+        lastSess := sess
         array.push(slOpen, isOpen)
         array.push(slInNy, mins >= NY_START_MIN and mins < NY_END_MIN)
         array.push(slSkip, array.includes(excludedDates,
@@ -284,6 +296,7 @@ if array.size(slT) > 0
         sL   = array.get(slL, k)
         sOp  = array.get(slOpen, k)
         sIn  = array.get(slInNy, k)
+        sNew = array.get(slNewSess, k)
 
         if not na(prov)
             if sT >= prov.t + TF_MS
@@ -294,6 +307,16 @@ if array.size(slT) > 0
             for i = array.size(mObjects) - 1 to 0
                 obj = array.get(mObjects, i)
                 bool drop = false
+
+                // The window closes at the New York open and nowhere else, so
+                // a region that survived a session untouched opens its window
+                // again and is trimmed afresh at the next one. Between the two
+                // it is not touchable, which is what keeps a visit at three in
+                // the morning from settling a box the day had yet to shape.
+                if sNew and not obj.frozen
+                    obj.active := false
+                    obj.wMin   := na
+                    obj.wMax   := na
 
                 if not obj.active
                     if sOp
@@ -905,12 +928,6 @@ targetR    = input.float(2.0, "R multiple", minval = 0.1, step = 0.1, group = G_
 // Not off the grid either: a five-minute slice is only published when its
 // bucket closes, so on an M1 chart the extremes would trail the signal by
 // up to four minutes and miss a low price just made.
-
-// The session a bar belongs to. Pushing 18:00 ET to midnight turns the
-// exchange session into a plain calendar date, daylight saving included.
-sessionDay(int t) =>
-    shifted = t + (1440 - SESS_OPEN_MIN) * 60000
-    year(shifted, NY_TZ) * 10000 + month(shifted, NY_TZ) * 100 + dayofmonth(shifted, NY_TZ)
 
 var int   daySess = na
 var float dayHigh = na

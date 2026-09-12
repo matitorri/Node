@@ -25,12 +25,6 @@ targetR    = input.float(2.0, "R multiple", minval = 0.1, step = 0.1, group = G_
 // bucket closes, so on an M1 chart the extremes would trail the signal by
 // up to four minutes and miss a low price just made.
 
-// The session a bar belongs to. Pushing 18:00 ET to midnight turns the
-// exchange session into a plain calendar date, daylight saving included.
-sessionDay(int t) =>
-    shifted = t + (1440 - SESS_OPEN_MIN) * 60000
-    year(shifted, NY_TZ) * 10000 + month(shifted, NY_TZ) * 100 + dayofmonth(shifted, NY_TZ)
-
 var int   daySess = na
 var float dayHigh = na
 var float dayLow  = na
