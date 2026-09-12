@@ -29,7 +29,7 @@ riskBudget = riskMode == RISK_FIXED ? riskQty : riskEquity * riskQty / 100.0
 
 // A point of price is worth syminfo.pointvalue, so nothing here is
 // specific to one symbol.
-riskPerContract = na(tradeEntry) or na(tradeStop) ? na : math.abs(tradeEntry - tradeStop) * syminfo.pointvalue
+riskPerContract = na(tradeExec) or na(tradeLoss) ? na : math.abs(tradeExec - tradeLoss) * syminfo.pointvalue
 
 // Always down. Rounding up would spend more than the budget just declared,
 // and a budget short of one contract means no position: there is nothing
@@ -41,8 +41,8 @@ if not na(riskPerContract) and riskPerContract > 0
         riskSize := maxContracts
 
 // ────────────────────────  POSITION MANAGER  ────────────────────────────
-// Shown the book and the day, never the trade. Three gates, all on
-// opening rather than on holding.
+// Shown the book and the day, never the trade. Three gates on opening,
+// and one rule about holding: nothing is carried past the hours.
 
 maxOpen = input.int(1, "Positions at a time", minval = 1, group = G_PM,
      tooltip = "A signal that arrives with the book already this full is ignored. It is not remembered: nothing is taken later on its behalf.")
@@ -81,14 +81,41 @@ pmInHours = pmBarMin >= tradingFrom and pmBarMin < tradingTo
 
 pmAllows = pmInHours and not pmDayOver and strategy.opentrades < maxOpen
 
+// The one rule that is not about opening. A target may never be reached,
+// so the hours closing is what ends a position that is still running.
+pmFlatten = strategy.position_size != 0 and not pmInHours
+
+// ──────────────────────────────  ORDERS  ────────────────────────────────
+// Where the two blocks meet: the intention, sized by one and permitted by
+// the other. Nothing decides anything here.
+
+// Held for as long as the position is, so the exit does not follow the
+// levels a later signal would have used.
+var float liveLoss   = na
+var float liveTarget = na
+
+if tradeDir != 0 and pmAllows and riskSize > 0
+    liveLoss   := tradeLoss
+    liveTarget := tradeTarget
+    strategy.entry("Node", tradeDir > 0 ? strategy.long : strategy.short, qty = riskSize)
+
+// A na target leaves the stop alone to work: the position then ends on the
+// loss or on the hours.
+if strategy.position_size != 0
+    strategy.exit("Exit", "Node", stop = liveLoss, limit = liveTarget)
+
+if pmFlatten
+    strategy.close_all(comment = "Hours")
+
 // ────────────────────────  DIAGNOSTICS  ─────────────────────────────────
 
 if showDiag and barstate.islast
-    diagRow(16, "hours",      (pmInHours ? "in" : "out") + "   " + clock(tradingFrom) + " – " + clock(tradingTo))
-    diagRow(17, "budget",     str.tostring(riskBudget, "#.##") + (riskMode == RISK_FIXED ? "  fixed" : "  " + str.tostring(riskQty) + "% of " + str.tostring(riskEquity, "#.##")))
-    diagRow(18, "per contract", na(riskPerContract) ? "— no stop yet" : str.tostring(riskPerContract, "#.##"))
-    diagRow(19, "size",       str.tostring(riskSize) + (riskSize >= maxContracts ? "  at ceiling" : ""))
-    diagRow(20, "open",       str.tostring(strategy.opentrades) + " / " + str.tostring(maxOpen))
-    diagRow(21, "session W/L", str.tostring(pmWins) + " / " + str.tostring(pmLosses))
-    diagRow(22, "day",        not pmDayOver ? "open" : pmWins >= winCut and winCut > 0 ? "closed · won" : "closed · lost")
-    diagRow(23, "allows",     pmAllows ? "yes" : not pmInHours ? "no · outside hours" : pmDayOver ? "no · day is over" : "no · book is full")
+    diagRow(20, "hours",      (pmInHours ? "in" : "out") + "   " + clock(tradingFrom) + " – " + clock(tradingTo))
+    diagRow(21, "budget",     str.tostring(riskBudget, "#.##") + (riskMode == RISK_FIXED ? "  fixed" : "  " + str.tostring(riskQty) + "% of " + str.tostring(riskEquity, "#.##")))
+    diagRow(22, "per contract", na(riskPerContract) ? "— no trade" : str.tostring(riskPerContract, "#.##"))
+    diagRow(23, "size",       str.tostring(riskSize) + (riskSize >= maxContracts ? "  at ceiling" : ""))
+    diagRow(24, "open",       str.tostring(strategy.opentrades) + " / " + str.tostring(maxOpen))
+    diagRow(25, "session W/L", str.tostring(pmWins) + " / " + str.tostring(pmLosses))
+    diagRow(26, "day",        not pmDayOver ? "open" : pmWins >= winCut and winCut > 0 ? "closed · won" : "closed · lost")
+    diagRow(27, "allows",     pmAllows ? "yes" : not pmInHours ? "no · outside hours" : pmDayOver ? "no · day is over" : "no · book is full")
+    diagRow(28, "position",   strategy.position_size == 0 ? "flat" : (strategy.position_size > 0 ? "long " : "short ") + str.tostring(math.abs(strategy.position_size)) + " @ " + str.tostring(strategy.position_avg_price, format.mintick))

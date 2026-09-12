@@ -18,7 +18,8 @@ standing on.
 | 6–10 | the objects |
 | 11–13 | the structure and its last change of character |
 | 14–15 | the setup and the signal |
-| 16–23 | the portfolio — strategy only |
+| 16–19 | the day's range and the strategy's intention — strategy only |
+| 20–28 | the portfolio and the book — strategy only |
 
 The `signal` row speaks only on the bar it fires, so in live trading it
 reads as empty almost always. Use the replay: stand on a bar where

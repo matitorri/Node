@@ -758,7 +758,7 @@ clock(int m) =>
     mm = m % 60
     (h < 10 ? "0" : "") + str.tostring(h) + ":" + (mm < 10 ? "0" : "") + str.tostring(mm)
 
-var table diag = table.new(position.top_right, 2, 24, border_width = 1,
+var table diag = table.new(position.top_right, 2, 32, border_width = 1,
      frame_width = 1, frame_color = color.gray)
 
 diagRow(int r, string k, string v) =>

@@ -71,9 +71,14 @@ would ever see.
 never disagree on when the system is at work. Read on the chart bar,
 since that is where an order would be placed.
 
-All three gate **opening**, not holding. A position already running is
-left alone when the day ends or the hours close. Flattening on either
-would be a different rule.
+All three gate **opening**. The day ending or the book filling leaves a
+position already running alone.
+
+There is one rule about **holding**, and it is here for the same reason
+the gates are: the strategy cannot see a position. Nothing is carried
+past the trading hours. A target may never be reached, so the hours
+closing is what ends a position that is still going — an exit by time,
+always on.
 
 ## Reading the trade list
 
@@ -81,3 +86,17 @@ would be a different rule.
 `pmRead`, the cursor into TradingView's closed-trade list, is not: it is
 cumulative over the whole backtest, and resetting it would count old
 trades again.
+
+## Orders
+
+Where the two blocks meet, and the only place that talks to TradingView.
+Nothing is decided here: the intention comes from the strategy, the size
+from risk management, the permission from position management.
+
+An entry is placed when all three agree — a direction, a permitted book,
+and a size of at least one contract.
+
+The loss and the target are copied when the position opens and held for
+as long as it lasts, so the exit does not start following levels a later
+signal would have used. A target that is `na` leaves the stop alone to
+work; the position then ends on the loss or on the hours.
