@@ -1,3 +1,9 @@
 //@version=6
 
-strategy("Node - v0.17.0-dev", overlay = true, initial_capital = 50000, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+// Futures are margined, and the broker emulator is not: left alone it wants
+// the whole notional in cash, which one MNQ contract already exceeds, and
+// every order is rejected without a word. Five percent is about what CME
+// asks overnight; set it to your broker's in Properties.
+strategy("Node - v0.17.0-dev", overlay = true, initial_capital = 50000,
+     margin_long = 5, margin_short = 5,
+     max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)

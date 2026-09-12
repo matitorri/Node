@@ -32,6 +32,14 @@ than left to TradingView's million-dollar default, so a percentage budget
 means something the first time the script is pasted. It can still be
 overridden in the script's Properties tab.
 
+The same call declares a **5% margin** on both sides. Futures are
+margined and the broker emulator is not: left alone it asks for the whole
+notional in cash, and one MNQ contract at 29,500 is already $59,000 of
+notional against a $50,000 account. Every order is then rejected without
+a word — the diagnostics say the size was five and the book stays flat.
+Five percent is about what CME asks overnight; a broker's day margin is
+usually lower.
+
 **The equity** is either the current equity, which compounds — the
 position grows after a win and shrinks after a loss — or the initial
 capital, which keeps the risk flat whatever the account has done since.
