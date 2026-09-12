@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node - v0.14.0", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+indicator("Node - v0.15.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // ════════════════════════════════  SHARED  ══════════════════════════════
 // Constants, inputs, the evaluation grid and the clock the three objects
@@ -788,6 +788,39 @@ structChoch = structOn and structChCount != nz(structChCount[1], 0)
 structNewPt = structOn and structPts != nz(structPts[1], 0)
 structColor = structPhase > 0 ? structUpColor : structDnColor
 
+// ════════════════════════════════  SETUP  ═══════════════════════════════
+// The context. It holds or it does not, and it can hold for hours.
+//
+// What it publishes is not a verdict but the V object in play — the region
+// the signal will be judged against — or nothing. That is what lets one
+// signal serve every setup: the setup chooses what to look at, the signal
+// only asks whether it fired.
+//
+// Several may live here eventually, each with its own name, its own toggle
+// and its own group of inputs, and each declaring what it needs from the
+// model — so one that cannot run says so in the diagnostics instead of
+// quietly never firing.
+//
+// Empty until the first one is specified.
+
+var VObject setupObj  = na              // the region in play, or none
+string      setupName = ""              // which setup put it there
+
+// ════════════════════════════════  SIGNAL  ══════════════════════════════
+// The trigger, inside a valid setup. Instantaneous, where the setup is a
+// standing condition.
+//
+// It is the change of character the structure model publishes, and it is
+// the same for every setup — which is why it lives here and not inside
+// one. How it meets the region the setup chose, in particular whether the
+// direction has to agree with that region's side, is not settled yet.
+//
+// The structure section already marks it on the chart. Drawing it again
+// here would only double the triangles.
+
+signalFired = structChoch
+signalDir   = structChDir
+
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
 
 // ──────────────────────  MARKET STRUCTURE  ──────────────────────────────
@@ -851,7 +884,7 @@ if barstate.islast
 stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
 sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
 
-var table diag = table.new(position.top_right, 2, 14, border_width = 1,
+var table diag = table.new(position.top_right, 2, 16, border_width = 1,
      frame_width = 1, frame_color = color.gray)
 
 diagRow(int r, string k, string v) =>
@@ -874,6 +907,8 @@ if showDiag and barstate.islast
     diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
     diagRow(11, "structure",    not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
     diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
+    diagRow(14, "setup",        setupName == "" ? "none" : setupName + (na(setupObj) ? "  no region" : "  holding"))
+    diagRow(15, "signal",       not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
     diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)

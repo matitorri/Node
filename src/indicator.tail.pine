@@ -61,7 +61,7 @@ if barstate.islast
 stamp(int t) => na(t) ? "—" : str.format_time(t, "yyyy-MM-dd HH:mm", NY_TZ)
 sided(int sd) => sd > 0 ? "long" : sd < 0 ? "short" : "—"
 
-var table diag = table.new(position.top_right, 2, 14, border_width = 1,
+var table diag = table.new(position.top_right, 2, 16, border_width = 1,
      frame_width = 1, frame_color = color.gray)
 
 diagRow(int r, string k, string v) =>
@@ -84,6 +84,8 @@ if showDiag and barstate.islast
     diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
     diagRow(11, "structure",    not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
     diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
+    diagRow(14, "setup",        setupName == "" ? "none" : setupName + (na(setupObj) ? "  no region" : "  holding"))
+    diagRow(15, "signal",       not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
     diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)

@@ -1,6 +1,6 @@
 //@version=6
 
-strategy("Node - v0.14.0", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+strategy("Node - v0.15.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // ════════════════════════════════  SHARED  ══════════════════════════════
 // Constants, inputs, the evaluation grid and the clock the three objects
@@ -788,10 +788,47 @@ structChoch = structOn and structChCount != nz(structChCount[1], 0)
 structNewPt = structOn and structPts != nz(structPts[1], 0)
 structColor = structPhase > 0 ? structUpColor : structDnColor
 
-// ════════════════════════════════  OUTPUT  ══════════════════════════════
-// Where the rules go. The V objects are already built by this point: mObjects
-// holds the live M objects, idObj and nyObj the other two, each carrying the
-// region, its side and whether price has touched or absorbed it.
+// ════════════════════════════════  SETUP  ═══════════════════════════════
+// The context. It holds or it does not, and it can hold for hours.
 //
-// Empty on purpose. A strategy with no orders compiles and draws the model,
-// which is what makes it useful to look at before there are any rules.
+// What it publishes is not a verdict but the V object in play — the region
+// the signal will be judged against — or nothing. That is what lets one
+// signal serve every setup: the setup chooses what to look at, the signal
+// only asks whether it fired.
+//
+// Several may live here eventually, each with its own name, its own toggle
+// and its own group of inputs, and each declaring what it needs from the
+// model — so one that cannot run says so in the diagnostics instead of
+// quietly never firing.
+//
+// Empty until the first one is specified.
+
+var VObject setupObj  = na              // the region in play, or none
+string      setupName = ""              // which setup put it there
+
+// ════════════════════════════════  SIGNAL  ══════════════════════════════
+// The trigger, inside a valid setup. Instantaneous, where the setup is a
+// standing condition.
+//
+// It is the change of character the structure model publishes, and it is
+// the same for every setup — which is why it lives here and not inside
+// one. How it meets the region the setup chose, in particular whether the
+// direction has to agree with that region's side, is not settled yet.
+//
+// The structure section already marks it on the chart. Drawing it again
+// here would only double the triangles.
+
+signalFired = structChoch
+signalDir   = structChDir
+
+// ═══════════════════════════════  STRATEGY  ═════════════════════════════
+// What to do about it: entry, stop, target, size. The layer that turns a
+// signal into an order, and the only one the indicator does not share.
+//
+// It reads setupObj for the region in play and signalFired for the moment.
+// Several strategies could sit on the same setup and the same signal and
+// differ only in the management, which is why that boundary is kept.
+//
+// Empty on purpose. A strategy with no orders still compiles and still
+// draws the model, which is what makes it worth looking at before there
+// are any rules.

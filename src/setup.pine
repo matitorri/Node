@@ -1,0 +1,17 @@
+// ════════════════════════════════  SETUP  ═══════════════════════════════
+// The context. It holds or it does not, and it can hold for hours.
+//
+// What it publishes is not a verdict but the V object in play — the region
+// the signal will be judged against — or nothing. That is what lets one
+// signal serve every setup: the setup chooses what to look at, the signal
+// only asks whether it fired.
+//
+// Several may live here eventually, each with its own name, its own toggle
+// and its own group of inputs, and each declaring what it needs from the
+// model — so one that cannot run says so in the diagnostics instead of
+// quietly never firing.
+//
+// Empty until the first one is specified.
+
+var VObject setupObj  = na              // the region in play, or none
+string      setupName = ""              // which setup put it there

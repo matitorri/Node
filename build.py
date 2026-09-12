@@ -20,6 +20,8 @@ def build(kind: str) -> Path:
         SRC / f"{kind}.head.pine",
         SRC / "model.vobjects.pine",
         SRC / "model.structure.pine",
+        SRC / "setup.pine",
+        SRC / "signal.pine",
         SRC / f"{kind}.tail.pine",
     ]
     body = "\n\n".join(p.read_text().strip("\n") for p in parts) + "\n"

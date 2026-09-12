@@ -1,0 +1,14 @@
+// ════════════════════════════════  SIGNAL  ══════════════════════════════
+// The trigger, inside a valid setup. Instantaneous, where the setup is a
+// standing condition.
+//
+// It is the change of character the structure model publishes, and it is
+// the same for every setup — which is why it lives here and not inside
+// one. How it meets the region the setup chose, in particular whether the
+// direction has to agree with that region's side, is not settled yet.
+//
+// The structure section already marks it on the chart. Drawing it again
+// here would only double the triangles.
+
+signalFired = structChoch
+signalDir   = structChDir
