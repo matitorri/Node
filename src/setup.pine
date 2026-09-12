@@ -54,7 +54,7 @@ if array.size(slT) > 0
             // is inside it, so the slice that kills a region also reports a
             // touch on it.
             VObject hit = array.get(slTouch, k)
-            if not na(hit) and not hit.eaten
+            if not na(hit) and not hit.eaten and not array.get(slSkip, k)
                 sT   = array.get(slT, k)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
                 if mins >= tradingFrom and mins < tradingTo

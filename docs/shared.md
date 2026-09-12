@@ -69,8 +69,20 @@ the usual volume. They are named by date in an input, parsed once into
 `YYYYMMDD` numbers; separators are stripped, so `2025-11-28` and
 `20251128` both work.
 
+A listed session is sat out **entirely**: no objects are created and no
+setup arms, so nothing downstream can fire. Skipping only the objects
+left the day trading regions built the day before.
+
+The date is the session's **closing** day, and a session opens at 18:00
+the evening before — so the filter compares session dates, not calendar
+dates. Comparing calendar dates let the evening hours of a skipped
+session through, which is half of it.
+
 Full closures need no entry. There are no bars, so there is nothing to
 draw.
+
+The diagnostics say how many dates were read and whether the session on
+screen is one of them, which is the only way to tell a typo from a rule.
 
 ## Trading hours
 

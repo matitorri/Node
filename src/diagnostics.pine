@@ -24,7 +24,7 @@ diagRow(int r, string k, string v) =>
 if showDiag and barstate.islast
     diagRow(0,  "chart",         timeframe.period + (coarse ? "  split" : "  bucketed"))
     diagRow(1,  "slices / bar",  str.tostring(array.size(slT)))
-    diagRow(2,  "bar",           stamp(time))
+    diagRow(2,  "bar",           stamp(time) + "   session " + str.tostring(sessionDay(time)) + (array.includes(excludedDates, sessionDay(time)) ? " · SKIPPED" : "") + "   " + str.tostring(array.size(excludedDates)) + " listed")
     diagRow(3,  "H4 dayNum",     str.tostring(dayNum) + (isNewSession ? "   turning" : ""))
     diagRow(4,  "H4 sess date",  na(lastSessDate) ? "—" : str.tostring(lastSessDate))
     diagRow(5,  "last turnover", stamp(lastTurnT))

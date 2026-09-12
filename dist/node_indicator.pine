@@ -29,7 +29,7 @@ G_V      = "Objects · V objects"
 excludedInput = input.text_area(
      "2025-11-28, 2025-12-24, 2026-11-27, 2026-12-24",
      "Skipped sessions", group = G_COMMON,
-     tooltip = "Sessions that produce no objects at all, one date per entry, comma or line separated. Dates are the session's closing day in New York time. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw.")
+     tooltip = "Sessions the system sits out entirely: no objects are created and no setup arms, so nothing trades. One date per entry, comma or line separated, and the date is the session's closing day in New York time — the session that closes on it opened at 18:00 the evening before. Meant for holiday half sessions. Full closures need no entry: no bars, nothing to draw. The diagnostics table says how many dates it read and whether the session on screen is one of them.")
 warnGrid = input.bool(true, "Warn when the chart does not fit the grid", group = G_COMMON)
 showDiag = input.bool(false, "Diagnostics table", group = G_COMMON,
      tooltip = "Reports the state behind the drawings on the last bar: what the feeds say the session is, when the last turnover happened, and where each object stands.")
@@ -157,8 +157,7 @@ if array.size(slT) > 0
         lastSess := sess
         array.push(slOpen, isOpen)
         array.push(slInNy, mins >= NY_START_MIN and mins < NY_END_MIN)
-        array.push(slSkip, array.includes(excludedDates,
-             year(t, NY_TZ) * 10000 + month(t, NY_TZ) * 100 + dom))
+        array.push(slSkip, array.includes(excludedDates, sess))
         array.push(slEvt, false)
 
 // ─────────────────────────  SESSION OPENING  ────────────────────────────
@@ -766,7 +765,7 @@ if array.size(slT) > 0
             // is inside it, so the slice that kills a region also reports a
             // touch on it.
             VObject hit = array.get(slTouch, k)
-            if not na(hit) and not hit.eaten
+            if not na(hit) and not hit.eaten and not array.get(slSkip, k)
                 sT   = array.get(slT, k)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
                 if mins >= tradingFrom and mins < tradingTo
@@ -810,7 +809,7 @@ diagRow(int r, string k, string v) =>
 if showDiag and barstate.islast
     diagRow(0,  "chart",         timeframe.period + (coarse ? "  split" : "  bucketed"))
     diagRow(1,  "slices / bar",  str.tostring(array.size(slT)))
-    diagRow(2,  "bar",           stamp(time))
+    diagRow(2,  "bar",           stamp(time) + "   session " + str.tostring(sessionDay(time)) + (array.includes(excludedDates, sessionDay(time)) ? " · SKIPPED" : "") + "   " + str.tostring(array.size(excludedDates)) + " listed")
     diagRow(3,  "H4 dayNum",     str.tostring(dayNum) + (isNewSession ? "   turning" : ""))
     diagRow(4,  "H4 sess date",  na(lastSessDate) ? "—" : str.tostring(lastSessDate))
     diagRow(5,  "last turnover", stamp(lastTurnT))
