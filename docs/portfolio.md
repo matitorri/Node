@@ -58,6 +58,24 @@ than one contract.
 **The ceiling** is a hard maximum applied after the budget has spoken. It
 never raises a size, only caps one.
 
+### Where the risk is set
+
+In **Inputs → Portfolio · Risk management → Amount**, and nowhere else.
+
+Properties has a *Default order size* field that looks like the same
+thing. TradingView reads it only when an order does not say how many
+contracts it wants, and every order here carries its own `qty`, so that
+field is inert. It is declared in contracts rather than as a percentage
+of equity for exactly that reason: as a percentage it read like a second
+risk setting that silently did nothing.
+
+Changing the budget changes **how many trades happen**, not just their
+size. A signal whose budget does not cover one contract is not taken at
+all, so raising the risk turns skipped signals into trades — and since
+two losses or one win end the day, a different first trade leads to a
+different day. Two backtests at different risk are not the same trades
+scaled.
+
 ## Position management
 
 Whether this one may be opened, read off the book and the day rather than
