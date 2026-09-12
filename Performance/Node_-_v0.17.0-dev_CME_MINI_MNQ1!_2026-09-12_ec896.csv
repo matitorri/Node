@@ -1,0 +1,5 @@
+﻿Trade number,Type,Date and time,Signal,Price USD,Size (qty),Size (value),Net PnL USD,Return %,Commission USD,Favorable excursion USD,Favorable excursion %,Adverse excursion USD,Adverse excursion %,Cumulative PnL USD,Cumulative PnL %,Duration (bars)
+1,Exit long,04/09/2026 14:42,Exit,29477.75,5,295210,-436.5,-0.15,4,748,0.25,-434.5,-0.15,-436.5,-0.87,119
+1,Entry long,04/09/2026 12:43,Node,29521,5,295210,-436.5,-0.15,4,748,0.25,-434.5,-0.15,-436.5,-0.87,119
+2,Exit long,04/09/2026 15:30,Exit,29517.75,15,884542.5,986,0.11,4,988,0.11,-407,-0.05,549.5,1.1,42
+2,Entry long,04/09/2026 14:48,Node,29484.75,15,884542.5,986,0.11,4,988,0.11,-407,-0.05,549.5,1.1,42

@@ -803,6 +803,8 @@ if showDiag and barstate.islast
     diagRow(15, "signal",        not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
 
 // ════════════════════════════════  OUTPUT  ══════════════════════════════
+// What the model draws, in both scripts: a strategy that cannot show the
+// structure it trades is not worth watching.
 
 // ──────────────────────  MARKET STRUCTURE  ──────────────────────────────
 // Two points can land on the same bar, so they are consumed in order, and
@@ -864,6 +866,10 @@ if barstate.islast
         label.new(bar_index, high, "This symbol does not report volume on H4",
              style = label.style_label_down, color = color.new(color.red, 10),
              textcolor = color.white, size = size.small)
+
+// ════════════════════════════════  ALERTS  ══════════════════════════════
+// The one thing a strategy cannot have: alertcondition is indicator-only.
+// Everything else this file used to hold now draws in both scripts.
 
 isNewMax = not na(wTime) and not na(wTime[1]) and wTime != wTime[1] and dayNum == nz(dayNum[1], 0)
 alertcondition(isNewMax, "Node · New daily volume high",

@@ -1,0 +1,64 @@
+// ════════════════════════════════  OUTPUT  ══════════════════════════════
+// What the model draws, in both scripts: a strategy that cannot show the
+// structure it trades is not worth watching.
+
+// ──────────────────────  MARKET STRUCTURE  ──────────────────────────────
+// Two points can land on the same bar, so they are consumed in order, and
+// each is named against the last of its own kind, not against its
+// neighbour.
+
+var float sPrevP  = na
+var int   sPrevT  = na
+var float sPrevHi = na
+var float sPrevLo = na
+
+if structNewPt
+    for slot = 0 to 1
+        float p = slot == 0 ? sAP : sBP
+        int   t = slot == 0 ? sAT : sBT
+        bool  h = slot == 0 ? sAH : sBH
+        if not na(t)
+            if showStructPath and not na(sPrevT)
+                line.new(sPrevT, sPrevP, t, p, xloc = xloc.bar_time,
+                     color = h ? structUpColor : structDnColor, width = 1)
+            if showStructTags
+                string tag = h ? (na(sPrevHi) ? "H" : p > sPrevHi ? "HH" : "LH")
+                     : (na(sPrevLo) ? "L" : p < sPrevLo ? "LL" : "HL")
+                label.new(t, p, tag, xloc = xloc.bar_time,
+                     style     = h ? label.style_label_down : label.style_label_up,
+                     color     = color.new(h ? structDnColor : structUpColor, 20),
+                     textcolor = color.white, size = size.tiny)
+            if h
+                sPrevHi := p
+            else
+                sPrevLo := p
+            sPrevP := p
+            sPrevT := t
+
+plot(structOn ? structHigh : na, "Structure high", color = color.new(structDnColor, 40),
+     style = plot.style_stepline, linewidth = 1)
+plot(structOn ? structLow : na,  "Structure low",  color = color.new(structUpColor, 40),
+     style = plot.style_stepline, linewidth = 1)
+
+// Two calls, not one: plotshape's location argument has to be const.
+plotshape(structChoch and structChDir > 0, "CHoCH up",
+     shape.triangleup, location.belowbar, color = structUpColor, size = size.small)
+plotshape(structChoch and structChDir < 0, "CHoCH down",
+     shape.triangledown, location.abovebar, color = structDnColor, size = size.small)
+
+// ──────────────────────────────  SETUP  ─────────────────────────────────
+
+plotshape(setupTook, "Setup took a region", shape.square, location.top,
+     color = color.new(color.yellow, 20), size = size.tiny)
+
+// ─────────────────────────────  WARNINGS  ───────────────────────────────
+
+if barstate.islast
+    if warnGrid and not coarse and 300 % timeframe.in_seconds() != 0
+        label.new(bar_index, high, "Chart timeframe (" + timeframe.period + ") does not divide the 5-minute grid\nSlices will not line up with other timeframes",
+             style = label.style_label_down, color = color.new(color.red, 10),
+             textcolor = color.white, size = size.small)
+    if na(wVol)
+        label.new(bar_index, high, "This symbol does not report volume on H4",
+             style = label.style_label_down, color = color.new(color.red, 10),
+             textcolor = color.white, size = size.small)

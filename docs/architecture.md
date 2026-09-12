@@ -43,12 +43,17 @@ both from the same parts:
 | `setup` | ✓ | ✓ |
 | `signal` | ✓ | ✓ |
 | `diagnostics` | ✓ | ✓ |
+| `output` | ✓ | ✓ |
 | `indicator.tail` | ✓ | |
 | `strategy` | | ✓ |
 | `portfolio` | | ✓ |
 
-The indicator draws; the strategy trades, and only it has a book to
-manage. Everything above the line is identical in both, byte for byte.
+Both scripts draw the model — a strategy that cannot show the structure it
+trades is not worth watching. What the indicator keeps to itself is a
+single line: `alertcondition` is not allowed in a strategy. What the
+strategy keeps to itself is the book.
+
+Everything shared is identical in both, byte for byte.
 
 ## Ordering constraints
 
