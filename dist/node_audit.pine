@@ -1,6 +1,6 @@
 //@version=6
 
-indicator("Node audit - v0.17.1-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+indicator("Node audit - v0.18.0", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
 
 // ════════════════════════════════  SHARED  ══════════════════════════════
 // See docs/shared.md.
