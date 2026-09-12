@@ -2,20 +2,68 @@
 // The last word: how much, and whether at all. It reads the intention the
 // strategy published and turns it into an order, or refuses it.
 //
-// Two concerns, kept apart because they answer different questions:
+// Two blocks, kept apart because they answer different questions and are
+// told different things:
 //
-//   Risk management — how much this position may lose. The strategy says
-//   where the stop is; the distance to it and the risk allowed decide the
-//   size. Changing how risk is taken happens here, once, for every
-//   strategy there will ever be.
+//   Risk management — how much this position may lose, and therefore how
+//   large it may be. It is shown one trade and nothing else.
 //
-//   Position manager — whether this one may be opened. What is already
-//   running is not something a strategy can see, so rules that depend on
-//   the book live here: no pyramiding, a ceiling on open positions, a stop
-//   for the day. A strategy that carried its own copy of those would
-//   eventually be the one missing a rule.
+//   Position manager — whether this one may be opened at all. It is shown
+//   the book and the day, and never sizes anything.
+//
+// Neither reaches into the other. A change in how risk is taken leaves the
+// gates alone, and a new gate leaves the sizing alone.
 //
 // This is the only layer besides the strategy that the indicator does not
 // share. There are no positions to manage in an indicator.
+
+// ────────────────────────  RISK MANAGEMENT  ─────────────────────────────
+// It reads one thing from the strategy: the distance from the entry to the
+// stop. From that and a budget it answers with a number of contracts.
 //
-// Empty until the rules are specified.
+// It does not know what is already open, how the day has gone, or how many
+// trades have been taken. None of that changes what a single position may
+// lose, and letting it in here would put the same rule in two places.
+
+G_RISK = "Portfolio · Risk management"
+
+RISK_PCT   = "Percent of equity"
+RISK_FIXED = "Fixed amount"
+EQ_CURRENT = "Current equity"
+EQ_INITIAL = "Initial capital"
+
+riskMode   = input.string(RISK_PCT, "Risk per position", options = [RISK_PCT, RISK_FIXED],
+     group = G_RISK,
+     tooltip = "How the budget for one position is expressed. The amount below is read in whichever unit this names.")
+riskQty    = input.float(1.0, "Amount", minval = 0.0, step = 0.1, group = G_RISK,
+     tooltip = "A percentage under Percent of equity, an amount of account currency under Fixed amount.")
+equityMode = input.string(EQ_CURRENT, "Measured against", options = [EQ_CURRENT, EQ_INITIAL],
+     group = G_RISK,
+     tooltip = "Current equity compounds: the position grows after a win and shrinks after a loss. Initial capital keeps the risk flat whatever the account has done since. Idle under Fixed amount.")
+maxContracts = input.int(10, "Contracts ceiling", minval = 1, group = G_RISK,
+     tooltip = "A hard maximum, applied after the budget has spoken. It never raises a size, only caps one.")
+
+// The account the budget is a share of.
+riskEquity = equityMode == EQ_INITIAL ? strategy.initial_capital : strategy.equity
+
+// What this position is allowed to lose, in account currency.
+riskBudget = riskMode == RISK_FIXED ? riskQty : riskEquity * riskQty / 100.0
+
+// What one contract loses if the stop is reached. A point of price is worth
+// syminfo.pointvalue, so the instrument and the distance together fix it and
+// nothing here is specific to one symbol.
+riskPerContract = na(tradeEntry) or na(tradeStop) ? na : math.abs(tradeEntry - tradeStop) * syminfo.pointvalue
+
+// Always down. Rounding up would quietly spend more than the budget just
+// declared, which is the one thing this block exists to prevent. A budget
+// that does not cover a single contract therefore means no position rather
+// than a smaller one: there is nothing smaller than one contract.
+int riskSize = 0
+if not na(riskPerContract) and riskPerContract > 0
+    riskSize := int(math.floor(riskBudget / riskPerContract))
+    if riskSize > maxContracts
+        riskSize := maxContracts
+
+// ────────────────────────  POSITION MANAGER  ────────────────────────────
+// Whether this one may be opened, read off the book and the day rather than
+// off the trade. Empty until the rules are specified.
