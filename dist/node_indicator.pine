@@ -284,6 +284,7 @@ if array.size(slT) > 0
         sOp  = array.get(slOpen, k)
         sIn  = array.get(slInNy, k)
         sNew = array.get(slNewSess, k)
+        sSkp = array.get(slSkip, k)
 
         if not na(prov)
             if sT >= prov.t + TF_MS
@@ -295,65 +296,73 @@ if array.size(slT) > 0
                 obj = array.get(mObjects, i)
                 bool drop = false
 
-                // The window closes at the New York open and nowhere else, so
-                // a region that survived a session untouched opens its window
-                // again and is trimmed afresh at the next one. Between the two
-                // it is not touchable, which is what keeps a visit at three in
-                // the morning from settling a box the day had yet to shape.
-                if sNew and not obj.frozen
-                    obj.active := false
-                    obj.wMin   := na
-                    obj.wMax   := na
+                // A session the calendar excludes is not one the region is
+                // judged on: it neither trims, nor freezes, nor is absorbed
+                // there. The box goes on projecting, or the day would read as
+                // a touch that never happened.
+                if sSkp
+                    if not obj.frozen
+                        box.set_right(obj.bx, sT)
+                else
+                    // The window closes at the New York open and nowhere else, so
+                    // a region that survived a session untouched opens its window
+                    // again and is trimmed afresh at the next one. Between the two
+                    // it is not touchable, which is what keeps a visit at three in
+                    // the morning from settling a box the day had yet to shape.
+                    if sNew and not obj.frozen
+                        obj.active := false
+                        obj.wMin   := na
+                        obj.wMax   := na
 
-                if not obj.active
-                    if sOp
-                        // Window closed. What survives is the part price never
-                        // visited, on the side the candle came from.
-                        float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
-                        float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
-                        if newTop <= newBot
+                    if not obj.active
+                        if sOp
+                            // Window closed. What survives is the part price never
+                            // visited, on the side the candle came from.
+                            float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
+                            float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
+                            if newTop <= newBot
+                                box.delete(obj.bx)
+                                drop := true
+                            else
+                                obj.top    := newTop
+                                obj.bot    := newBot
+                                obj.active := true
+                                box.set_lefttop(obj.bx, obj.t, newTop)
+                                box.set_rightbottom(obj.bx, sT, newBot)
+                        else
+                            obj.wMin := na(obj.wMin) ? sL : math.min(obj.wMin, sL)
+                            obj.wMax := na(obj.wMax) ? sH : math.max(obj.wMax, sH)
+                            box.set_right(obj.bx, sT)
+
+                    if not drop and obj.active
+                        // Being inside the region is the event, and it is published
+                        // every slice it holds. Freezing the box is a drawing
+                        // matter and happens once; tying the two together spent an
+                        // object's only chance to arm a setup on its first touch,
+                        // whatever hour that was.
+                        inside = sH >= obj.bot and sL <= obj.top
+                        if inside
+                            array.set(slTouch, k, obj)
+
+                        if obj.frozen
+                            if sT >= obj.expire
+                                drop := true
+                        else if inside
+                            box.set_right(obj.bx, sT)
+                            obj.frozen := true
+                        else if sT >= obj.expire
                             box.delete(obj.bx)
                             drop := true
                         else
-                            obj.top    := newTop
-                            obj.bot    := newBot
-                            obj.active := true
-                            box.set_lefttop(obj.bx, obj.t, newTop)
-                            box.set_rightbottom(obj.bx, sT, newBot)
-                    else
-                        obj.wMin := na(obj.wMin) ? sL : math.min(obj.wMin, sL)
-                        obj.wMax := na(obj.wMax) ? sH : math.max(obj.wMax, sH)
-                        box.set_right(obj.bx, sT)
+                            box.set_right(obj.bx, sT)
 
-                if not drop and obj.active
-                    // Being inside the region is the event, and it is published
-                    // every slice it holds. Freezing the box is a drawing
-                    // matter and happens once; tying the two together spent an
-                    // object's only chance to arm a setup on its first touch,
-                    // whatever hour that was.
-                    inside = sH >= obj.bot and sL <= obj.top
-                    if inside
-                        array.set(slTouch, k, obj)
-
-                    if obj.frozen
-                        if sT >= obj.expire
-                            drop := true
-                    else if inside
-                        box.set_right(obj.bx, sT)
-                        obj.frozen := true
-                    else if sT >= obj.expire
-                        box.delete(obj.bx)
-                        drop := true
-                    else
-                        box.set_right(obj.bx, sT)
-
-                // The far edge: a bullish region dies on its low, a bearish one
-                // on its high. Absorbed during New York, it fires slEvt.
-                if not drop and obj.active and not obj.eaten
-                    if obj.side > 0 ? sL < obj.bot : sH > obj.top
-                        obj.eaten := true
-                        if sIn
-                            array.set(slEvt, k, true)
+                    // The far edge: a bullish region dies on its low, a bearish one
+                    // on its high. Absorbed during New York, it fires slEvt.
+                    if not drop and obj.active and not obj.eaten
+                        if obj.side > 0 ? sL < obj.bot : sH > obj.top
+                            obj.eaten := true
+                            if sIn
+                                array.set(slEvt, k, true)
 
                 if drop
                     array.remove(mObjects, i)

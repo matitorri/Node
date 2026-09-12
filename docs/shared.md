@@ -69,9 +69,16 @@ the usual volume. They are named by date in an input, parsed once into
 `YYYYMMDD` numbers; separators are stripped, so `2025-11-28` and
 `20251128` both work.
 
-A listed session is sat out **entirely**: no objects are created and no
-setup arms, so nothing downstream can fire. Skipping only the objects
-left the day trading regions built the day before.
+A listed session is sat out **entirely**: no objects are created, no
+setup arms, and no region already alive is judged on it. An M object is
+the only thing that crosses sessions, and on a skipped one it neither
+trims, nor freezes on a touch, nor can be absorbed — it carries to the
+next real session as it was. Its box goes on projecting, since a gap in
+the drawing would read as a touch that never happened.
+
+Skipping only the objects left the day trading regions built the day
+before, and settling their boxes on prices nobody should have been
+trading against.
 
 The date is the session's **closing** day, and a session opens at 18:00
 the evening before — so the filter compares session dates, not calendar

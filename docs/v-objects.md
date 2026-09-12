@@ -70,6 +70,10 @@ books until it expires or is absorbed.
 **Half sessions** produce no M object. They open a daily bar but trade a
 fraction of the usual volume, so the winner means nothing.
 
+A region already alive is not judged on one either: it does not trim,
+does not freeze, and cannot be absorbed there. It reaches the next real
+session untouched by a day the system sat out.
+
 ## ID object
 
 The region left by the highest-volume H1 candle of the window running
