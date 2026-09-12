@@ -177,6 +177,22 @@ sessionOpened() =>
         seen := true
     fire
 
+// The same, for 09:30. Bounded above for the reason the slice detector is:
+// a Sunday reopen is the first trade of its New York day and sits well past
+// the open.
+nyOpened() =>
+    var int  lastDay = na
+    var bool seen    = false
+    d = dayofmonth(time, NY_TZ)
+    if na(lastDay) or d != lastDay
+        lastDay := d
+        seen    := false
+    m    = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
+    fire = not seen and m >= NY_OPEN_MIN and m < NY_END_MIN
+    if fire
+        seen := true
+    fire
+
 // ══════════════════════════════  V OBJECTS  ═════════════════════════════
 // See docs/v-objects.md.
 
@@ -271,6 +287,35 @@ if not na(wTime)
         prov.wMin := na
         prov.wMax := na
 
+// ──────────────────────────────  TRIM  ──────────────────────────────────
+// The New York open is a moment, not a slice. Keyed to the slice that starts
+// at 09:30, the trim only landed when that slice was published — five
+// minutes later on an M1 chart, fifteen on an M15 — and until then the
+// region carried the night's shape and could not be touched at all.
+//
+// The window is still made of slices and still closes at 09:30, so the range
+// a region ends up with does not depend on the chart. Only the moment it is
+// applied is read off the bar.
+
+if nyOpened() and not array.includes(excludedDates, sessionDay(time)) and array.size(mObjects) > 0
+    for i = array.size(mObjects) - 1 to 0
+        obj = array.get(mObjects, i)
+        if not obj.active
+            // What survives is the part price never visited, on the side the
+            // candle came from.
+            float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
+            float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
+            if newTop <= newBot
+                // Fully absorbed overnight.
+                box.delete(obj.bx)
+                array.remove(mObjects, i)
+            else
+                obj.top    := newTop
+                obj.bot    := newBot
+                obj.active := true
+                box.set_lefttop(obj.bx, obj.t, newTop)
+                box.set_rightbottom(obj.bx, time, newBot)
+
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
 array.clear(slTouch)
@@ -281,7 +326,6 @@ if array.size(slT) > 0
         sT   = array.get(slT, k)
         sH   = array.get(slH, k)
         sL   = array.get(slL, k)
-        sOp  = array.get(slOpen, k)
         sIn  = array.get(slInNy, k)
         sNew = array.get(slNewSess, k)
         sSkp = array.get(slSkip, k)
@@ -315,24 +359,14 @@ if array.size(slT) > 0
                         obj.wMax   := na
 
                     if not obj.active
-                        if sOp
-                            // Window closed. What survives is the part price never
-                            // visited, on the side the candle came from.
-                            float newTop = obj.side > 0 ? math.min(obj.top, nz(obj.wMin, obj.top)) : obj.top
-                            float newBot = obj.side < 0 ? math.max(obj.bot, nz(obj.wMax, obj.bot)) : obj.bot
-                            if newTop <= newBot
-                                box.delete(obj.bx)
-                                drop := true
-                            else
-                                obj.top    := newTop
-                                obj.bot    := newBot
-                                obj.active := true
-                                box.set_lefttop(obj.bx, obj.t, newTop)
-                                box.set_rightbottom(obj.bx, sT, newBot)
-                        else
+                        // The window closes at the open of the session the
+                        // slice belongs to. Evening slices are before theirs,
+                        // which is why the bound is not simply an earlier hour.
+                        sMin = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
+                        if sMin < NY_OPEN_MIN or sMin >= NY_END_MIN
                             obj.wMin := na(obj.wMin) ? sL : math.min(obj.wMin, sL)
                             obj.wMax := na(obj.wMax) ? sH : math.max(obj.wMax, sH)
-                            box.set_right(obj.bx, sT)
+                        box.set_right(obj.bx, sT)
 
                     if not drop and obj.active
                         // Being inside the region is the event, and it is published

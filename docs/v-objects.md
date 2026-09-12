@@ -52,6 +52,13 @@ part below the window's low, a bearish one the part above its high. If
 nothing survives, the region was fully absorbed before it could be used
 and is dropped.
 
+The window is made of five-minute slices, so the range a region ends up
+with is the same on any chart. The **moment** the trim is applied is read
+off the bar rather than off the grid: keyed to the slice starting at
+09:30, it only landed when that slice was published — five minutes later
+on an M1 chart, fifteen on an M15 — and until then the region carried the
+night's shape and could not be touched at all.
+
 It happens **again at every session open** the region reaches untouched.
 The window reopens when the exchange session does, runs overnight, and
 closes at the next New York open, so a region that survives a day comes
