@@ -214,7 +214,10 @@ type VObject
     float bot    = na
     int   side   = 0                    // +1 long, -1 short
     int   born   = na                   // when its box was drawn
-    bool  frozen = false                // the box stopped growing
+    bool  frozen = false                // touched, and with that done
+    int   endT   = na                   // where it stops projecting. While it
+                                        // is na the region is still running,
+                                        // and the drawing follows
     bool  eaten  = false                // the far edge is gone, so is the region
     bool  active = false                // M only: trimmed and touchable
     float wMin   = na                   // M only: trim window extremes
@@ -325,8 +328,6 @@ if nyOpened() and not array.includes(excludedDates, sessionDay(time)) and array.
                 obj.top    := newTop
                 obj.bot    := newBot
                 obj.active := true
-                box.set_lefttop(obj.bx, obj.t, newTop)
-                box.set_rightbottom(obj.bx, time, newBot)
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
@@ -353,13 +354,10 @@ if array.size(slT) > 0
                 bool drop = false
 
                 // A session the calendar excludes is not one the region is
-                // judged on: it neither trims, nor freezes, nor is absorbed
-                // there. The box goes on projecting, or the day would read as
-                // a touch that never happened.
-                if sSkp
-                    if not obj.frozen
-                        box.set_right(obj.bx, sT)
-                else
+                // judged on: it neither trims, nor is touched, nor is absorbed
+                // there. It reaches the next real session as it was, and goes
+                // on being drawn, because it goes on existing.
+                if not sSkp
                     // The window closes at the New York open and nowhere else, so
                     // a region that survived a session untouched opens its window
                     // again and is trimmed afresh at the next one. Between the two
@@ -378,7 +376,6 @@ if array.size(slT) > 0
                         if sMin < NY_OPEN_MIN or sMin >= NY_END_MIN
                             obj.wMin := na(obj.wMin) ? sL : math.min(obj.wMin, sL)
                             obj.wMax := na(obj.wMax) ? sH : math.max(obj.wMax, sH)
-                        box.set_right(obj.bx, sT)
 
                     if not drop and obj.active
                         inside = sH >= obj.bot and sL <= obj.top
@@ -404,15 +401,12 @@ if array.size(slT) > 0
                             // When price enters two at once the newest claims
                             // the slot, which is why the list is walked from
                             // the end.
-                            box.set_right(obj.bx, sT)
                             obj.frozen := true
+                            obj.endT   := sT
                             if na(array.get(slTouch, k))
                                 array.set(slTouch, k, obj)
                         else if sT >= obj.expire
-                            box.delete(obj.bx)
                             drop := true
-                        else
-                            box.set_right(obj.bx, sT)
 
                     // The far edge: a bullish region dies on its low, a bearish one
                     // on its high. Absorbed during New York, it fires slEvt.
@@ -423,6 +417,7 @@ if array.size(slT) > 0
                                 array.set(slEvt, k, true)
 
                 if drop
+                    box.delete(obj.bx)
                     array.remove(mObjects, i)
 
 // ─────────────────────────────  ID OBJECT  ──────────────────────────────
@@ -519,9 +514,9 @@ if array.size(slT) > 0
                  bgcolor      = color.new(idColor, 85))
 
         if not na(idObj) and not idObj.frozen
-            box.set_right(idObj.bx, sT)
             if sH >= idObj.bot and sL <= idObj.top
                 idObj.frozen := true
+                idObj.endT   := sT
 
         if not na(idObj) and not idObj.eaten
             if idObj.side > 0 ? sL < idObj.bot : sH > idObj.top
@@ -651,9 +646,32 @@ if array.size(slT) > 0
                  bgcolor      = color.new(nyIdColor, 85))
 
         if not na(nyObj) and not nyObj.eaten
-            box.set_right(nyObj.bx, sT)
             if nyObj.side > 0 ? sL < nyObj.bot : sH > nyObj.top
                 nyObj.eaten := true
+                nyObj.endT  := sT
+
+// ────────────────────────────  DRAWING  ─────────────────────────────────
+// The only place a box is given a shape. Every V object is painted from its
+// own state, on every bar, so the chart cannot say anything the object does
+// not: the range is the range, and the box ends where the region ends.
+//
+// Geometry used to be written wherever a lifecycle happened to be — at the
+// trim, at the touch, at an absorption, on an excluded session — half a
+// dozen places that each had to remember to keep the drawing current. Miss
+// one and the chart and the model become two accounts of the same fact.
+// They did, and telling which was wrong took longer than either bug.
+
+paint(VObject o) =>
+    if not na(o) and not na(o.bx)
+        box.set_lefttop(o.bx, o.t, o.top)
+        box.set_rightbottom(o.bx, na(o.endT) ? time : o.endT, o.bot)
+
+if array.size(mObjects) > 0
+    for i = 0 to array.size(mObjects) - 1
+        paint(array.get(mObjects, i))
+
+paint(idObj)
+paint(nyObj)
 
 // ══════════════════════════  MARKET STRUCTURE  ══════════════════════════
 // See docs/market-structure.md.

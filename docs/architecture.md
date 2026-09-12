@@ -80,6 +80,15 @@ in `setup.pine` — carrying the position manager's group, which is whose
 policy it is. It sits there and not earlier only so that the Portfolio
 section does not open above the model in the dialog.
 
+## One account, not two
+
+The model is the only source. Anything drawn is derived from it, in one
+place, from state — never written alongside the logic that changed the
+state. A chart that cannot say something the model does not is a chart
+that shows a bug instead of hiding one.
+
+See [the drawing pass](v-objects.md#drawing) for what that looks like.
+
 ## Conventions
 
 Code and comments are written in English.

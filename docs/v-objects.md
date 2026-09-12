@@ -117,3 +117,26 @@ picked.
 
 Absorption is measured against the region **as drawn**, not against what
 its source candle went on to become.
+
+## Drawing
+
+A V object is painted from its own state, in one pass, on every bar. The
+lifecycles change state and nothing else; they never touch a box.
+
+```
+left   the source candle
+right  where the region stopped projecting, or now if it has not
+top    the region's top
+bottom the region's bottom
+```
+
+The right edge is state like everything else: `na` while the region is
+still running, and set by whatever ended it — the touch for an M or ID
+object, the absorption for a NY ID one.
+
+Geometry used to be written wherever a lifecycle happened to be: at the
+trim, at the touch, at an absorption, on an excluded session. Half a dozen
+places that each had to remember to keep the drawing current, and the
+chart and the model were two accounts of the same fact rather than one.
+They disagreed, and working out which of the two was wrong took longer
+than any bug in either.
