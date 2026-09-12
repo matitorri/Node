@@ -26,6 +26,7 @@ SESS_OPEN_MIN = 18 * 60                 // 18:00 ET, when the session opens
 
 // Groups, in the order they appear in the settings dialog.
 G_COMMON = "Common"
+G_HOURS  = "Trading hours"
 G_M      = "V Objects · M"
 G_ID     = "V Objects · ID"
 G_NY     = "V Objects · NY ID"
@@ -49,6 +50,23 @@ idColor      = input.color(color.new(color.blue, 0), "ID object color", group = 
 
 enableNyId   = input.bool(true, "Enable NY ID object", group = G_NY)
 nyIdColor    = input.color(color.new(color.purple, 0), "NY ID object color", group = G_NY)
+
+// ─────────────────────────  TRADING HOURS  ──────────────────────────────
+// When the system is allowed to work, declared once because more than one
+// layer obeys it and they must obey the same thing. The setup will not arm
+// a region outside them, so a touch at three in the morning cannot sit there
+// waiting to fire at ten; the position manager will not open a position
+// outside them either. Neither owns the hours, which is why they are here.
+
+tradingHours = input.session("0930-1700", "Trading hours · New York time", group = G_HOURS,
+     tooltip = "New York time, not the chart's timezone. The defaults are what the model already calls New York — set them to the hours you actually trade.")
+
+// The session string reads "0930-1700", so the two ends sit at fixed offsets
+// whatever day mask may follow them.
+hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
+
+tradingFrom = hhmm(str.substring(tradingHours, 0, 4))
+tradingTo   = hhmm(str.substring(tradingHours, 5, 9))
 
 // ────────────────────────  SKIPPED SESSIONS  ────────────────────────────
 // The skip list, parsed once into YYYYMMDD numbers. Separators and any
@@ -825,17 +843,8 @@ G_M_SETUP = "Setup · M touch"
 
 enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
      tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
-mSetupHours  = input.session("0930-1700", "Trading hours · New York time", group = G_M_SETUP,
-     tooltip = "New York time, not the chart's timezone. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
 
 mSetupReady = enableMSetup and enableM   // what it needs from the model
-
-// The session string reads "0930-1700", so the two ends sit at fixed offsets
-// whatever day mask may follow them.
-hhmm(string s) => int(str.tonumber(str.substring(s, 0, 2))) * 60 + int(str.tonumber(str.substring(s, 2, 4)))
-
-mSetupFrom = hhmm(str.substring(mSetupHours, 0, 4))
-mSetupTo   = hhmm(str.substring(mSetupHours, 5, 9))
 
 if isNewSession
     setupObj := na
@@ -853,7 +862,7 @@ if array.size(slT) > 0
             VObject hit = array.get(slTouch, k)
             if not na(hit)
                 mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
-                if mins >= mSetupFrom and mins < mSetupTo
+                if mins >= tradingFrom and mins < tradingTo
                     setupObj  := hit
                     setupTook := true
 

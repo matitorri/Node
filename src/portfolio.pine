@@ -69,11 +69,13 @@ if not na(riskPerContract) and riskPerContract > 0
 // off the trade. It never sizes anything and never looks at where the stop
 // is: given the same book it answers the same, whatever the signal was.
 //
-// Two gates. One is about room — a signal arriving while the book is full
-// is ignored, not queued and not stacked on what is running. The other is
-// about the day: a count of trades closed since the session opened, against
-// a limit on each side. Reaching either limit ends the day, and only the
-// session opening brings it back.
+// Three gates. One is about room — a signal arriving while the book is full
+// is ignored, not queued and not stacked on what is running. One is about
+// the day: a count of trades closed since the session opened, against a
+// limit on each side. Reaching either limit ends the day, and only the
+// session opening brings it back. The last is the clock, and the hours are
+// the shared ones, so the setup and this block can never disagree on when
+// the system is at work.
 //
 // Counting trades rather than money is deliberate. It bounds the day at a
 // known number of attempts regardless of what each one was worth, and the
@@ -114,6 +116,11 @@ if strategy.closedtrades > pmRead
 
 pmDayOver = (lossCut > 0 and pmLosses >= lossCut) or (winCut > 0 and pmWins >= winCut)
 
+// Read on the chart bar, since that is where an order would be placed.
+pmBarMin  = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
+pmInHours = pmBarMin >= tradingFrom and pmBarMin < tradingTo
+
 // The one thing this block publishes. A position already running is left
-// alone when the day ends: the gate is on opening, not on holding.
-pmAllows = not pmDayOver and strategy.opentrades < maxOpen
+// alone when the day ends or the hours close: the gate is on opening, not
+// on holding.
+pmAllows = pmInHours and not pmDayOver and strategy.opentrades < maxOpen
