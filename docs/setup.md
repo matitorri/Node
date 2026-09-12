@@ -41,29 +41,17 @@ character at ten.
 
 **Needs** M objects to be enabled.
 
-## The touch is an event
+## The touch channel
 
-The model latches it on the region itself. The setup asks whether a region
-**has been** touched, not whether price is inside one now: without the
-event there is no setup, and after it there is one whether price is in or
-out.
+The touch is an event, and only the M object's lifecycle is in a position
+to see it happen — it is the code walking the slices while price is in
+the region. It publishes `slTouch`, one entry per grid slice, holding the
+object price is inside on that slice or nothing.
 
-Three readings were tried before this one, and the two that failed are
-worth keeping:
-
-**The first touch of a region's life**, raised on the transition that
-freezes its box. A touch at three in the morning was rejected by the
-trading hours and spent it, and the region went on living for days with no
-way left to arm anything.
-
-**Being inside the region right now**, published every five-minute slice
-it held. An M object is as wide as the H4 candle it came from — four or
-five hundred points is ordinary — so a region that contained price
-overnight armed the setup at the open of every day, with price having done
-nothing at all.
-
-The latch has neither problem: the event is recorded whenever it happens,
-and the trading hours decide when a region so marked may be taken up.
-
-The most recent qualifying region wins. A newer one replaces whatever the
-setup was holding.
+It is published for as long as price holds the region, not once. Freezing
+the box is a separate, one-time drawing matter, and while the two were
+tied together an M object had exactly one chance to arm a setup — its
+first touch ever. A touch at three in the morning, rejected by the
+trading hours, spent it; so did a touch on a day the setup then let go of
+at the session turnover. Either way the region went on living for days
+without ever being tradable again.

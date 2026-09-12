@@ -47,29 +47,20 @@ if not na(setupObj)
     if setupObj.eaten or gone or time >= setupObj.expire
         setupObj := na
 
-// The touch is an event, and the model latches it on the region itself. The
-// setup asks whether a region has been touched, not whether price is inside
-// one now: without the event there is no setup, and after it there is one
-// whether price is in or out.
-//
-// Asking about the present instead meant a region wide enough to contain
-// price overnight armed the setup at the open of every day, with price
-// having done nothing at all.
-//
-// The most recent qualifying region wins, which is why the list is walked
-// from the end.
-
-setupMin = hour(time, NY_TZ) * 60 + minute(time, NY_TZ)
-
-if mSetupReady and setupMin >= tradingFrom and setupMin < tradingTo
-    if not array.includes(excludedDates, sessionDay(time)) and array.size(mObjects) > 0
-        for i = array.size(mObjects) - 1 to 0
-            cand = array.get(mObjects, i)
-            if cand.touched and cand.active and not cand.eaten
-                if na(setupObj) or setupObj.t != cand.t
-                    setupTook := true
-                setupObj := cand
-                break
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        if mSetupReady
+            // An absorbed region is never taken. Price on its way out of one
+            // is inside it, so the slice that kills a region also reports a
+            // touch on it.
+            VObject hit = array.get(slTouch, k)
+            if not na(hit) and not hit.eaten and not array.get(slSkip, k)
+                sT   = array.get(slT, k)
+                mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
+                if mins >= tradingFrom and mins < tradingTo
+                    if na(setupObj) or setupObj.t != hit.t
+                        setupTook := true
+                    setupObj := hit
 
 if not na(setupObj)
     setupName := "M touch"
