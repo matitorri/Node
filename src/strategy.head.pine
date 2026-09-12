@@ -1,3 +1,3 @@
 //@version=6
 
-strategy("Node - v0.15.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+strategy("Node - v0.15.0", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
