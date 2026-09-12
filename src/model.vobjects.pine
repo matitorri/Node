@@ -259,6 +259,11 @@ var array<VObject> mObjects = array.new<VObject>()
 var VObject prov = na                   // winner of the session in progress
 var int lastTurnT = na                  // when the session last turned over
 
+// Which M object price entered on each slice, if any. Published because the
+// touch is an event the setup layer waits on, and only the lifecycle below
+// is in a position to see it happen.
+var array<VObject> slTouch = array.new<VObject>()
+
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 // Driven by the H4 feed rather than by the grid, since that is what decides
 // when a session's winner is final.
@@ -300,8 +305,11 @@ if not na(wTime)
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
+array.clear(slTouch)
+
 if array.size(slT) > 0
     for k = 0 to array.size(slT) - 1
+        array.push(slTouch, na)
         sT   = array.get(slT, k)
         sH   = array.get(slH, k)
         sL   = array.get(slL, k)
@@ -354,6 +362,7 @@ if array.size(slT) > 0
                         // Touched: freeze the box where it happened.
                         box.set_right(obj.bx, sT)
                         obj.frozen := true
+                        array.set(slTouch, k, obj)
                     else if sT >= obj.expire
                         box.delete(obj.bx)
                         drop := true

@@ -263,6 +263,11 @@ var array<VObject> mObjects = array.new<VObject>()
 var VObject prov = na                   // winner of the session in progress
 var int lastTurnT = na                  // when the session last turned over
 
+// Which M object price entered on each slice, if any. Published because the
+// touch is an event the setup layer waits on, and only the lifecycle below
+// is in a position to see it happen.
+var array<VObject> slTouch = array.new<VObject>()
+
 // ────────────────────────  SESSION TURNOVER  ────────────────────────────
 // Driven by the H4 feed rather than by the grid, since that is what decides
 // when a session's winner is final.
@@ -304,8 +309,11 @@ if not na(wTime)
 
 // ──────────────────────────  LIFECYCLE  ─────────────────────────────────
 
+array.clear(slTouch)
+
 if array.size(slT) > 0
     for k = 0 to array.size(slT) - 1
+        array.push(slTouch, na)
         sT   = array.get(slT, k)
         sH   = array.get(slH, k)
         sL   = array.get(slL, k)
@@ -358,6 +366,7 @@ if array.size(slT) > 0
                         // Touched: freeze the box where it happened.
                         box.set_right(obj.bx, sT)
                         obj.frozen := true
+                        array.set(slTouch, k, obj)
                     else if sT >= obj.expire
                         box.delete(obj.bx)
                         drop := true
@@ -796,15 +805,56 @@ structColor = structPhase > 0 ? structUpColor : structDnColor
 // signal serve every setup: the setup chooses what to look at, the signal
 // only asks whether it fired.
 //
-// Several may live here eventually, each with its own name, its own toggle
-// and its own group of inputs, and each declaring what it needs from the
-// model — so one that cannot run says so in the diagnostics instead of
-// quietly never firing.
-//
-// Empty until the first one is specified.
+// Each setup declares what it needs from the model, so one that cannot run
+// says so in the diagnostics instead of quietly never firing.
 
 var VObject setupObj  = na              // the region in play, or none
 string      setupName = ""              // which setup put it there
+bool        setupTook = false           // it took one on this bar
+
+// ─────────────────────────  M TOUCH  ────────────────────────────────────
+// Price entering an M object puts that region in play. A later touch on a
+// different one takes its place: the most recent is the one being traded.
+//
+// It lets go when the region stops existing — price absorbs it, or it
+// expires untouched — or when the session turns over. Not when a target is
+// reached: the setup sits above the strategy and cannot see a position.
+// Keeping a second trade from opening while one is live belongs down there.
+
+G_M_SETUP = "Setup · M touch"
+
+enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
+     tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
+mSetupOpen   = input.int(930,  "Trading hours, from", minval = 0, maxval = 2359, group = G_M_SETUP,
+     tooltip = "New York time, written as HHMM. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
+mSetupClose  = input.int(1700, "Trading hours, to",   minval = 0, maxval = 2359, group = G_M_SETUP)
+
+mSetupReady = enableMSetup and enableM   // what it needs from the model
+
+hhmm(int v) => math.floor(v / 100) * 60 + v % 100
+
+if isNewSession
+    setupObj := na
+
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        sT = array.get(slT, k)
+
+        // Let go of a region that no longer exists.
+        if not na(setupObj)
+            if setupObj.eaten or sT >= setupObj.expire
+                setupObj := na
+
+        if mSetupReady
+            VObject hit = array.get(slTouch, k)
+            if not na(hit)
+                mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
+                if mins >= hhmm(mSetupOpen) and mins < hhmm(mSetupClose)
+                    setupObj  := hit
+                    setupTook := true
+
+if not na(setupObj)
+    setupName := "M touch"
 
 // ════════════════════════════════  SIGNAL  ══════════════════════════════
 // The trigger, inside a valid setup. Instantaneous, where the setup is a
@@ -866,6 +916,13 @@ plotshape(structChoch and structChDir > 0, "CHoCH up",
 plotshape(structChoch and structChDir < 0, "CHoCH down",
      shape.triangledown, location.abovebar, color = structDnColor, size = size.small)
 
+// ──────────────────────────────  SETUP  ─────────────────────────────────
+// Where a region came into play, so a trade can be read back to the moment
+// the context opened.
+
+plotshape(setupTook, "Setup took a region", shape.square, location.top,
+     color = color.new(color.yellow, 20), size = size.tiny)
+
 // ─────────────────────────────  WARNINGS  ───────────────────────────────
 
 if barstate.islast
@@ -907,7 +964,7 @@ if showDiag and barstate.islast
     diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
     diagRow(11, "structure",    not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
     diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
-    diagRow(14, "setup",        setupName == "" ? "none" : setupName + (na(setupObj) ? "  no region" : "  holding"))
+    diagRow(14, "setup",        not mSetupReady ? "M touch · needs M objects" : na(setupObj) ? "M touch · idle" : "M touch · holding " + str.tostring(setupObj.bot, format.mintick) + " – " + str.tostring(setupObj.top, format.mintick))
     diagRow(15, "signal",       not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
     diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
 

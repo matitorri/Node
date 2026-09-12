@@ -6,12 +6,53 @@
 // signal serve every setup: the setup chooses what to look at, the signal
 // only asks whether it fired.
 //
-// Several may live here eventually, each with its own name, its own toggle
-// and its own group of inputs, and each declaring what it needs from the
-// model — so one that cannot run says so in the diagnostics instead of
-// quietly never firing.
-//
-// Empty until the first one is specified.
+// Each setup declares what it needs from the model, so one that cannot run
+// says so in the diagnostics instead of quietly never firing.
 
 var VObject setupObj  = na              // the region in play, or none
 string      setupName = ""              // which setup put it there
+bool        setupTook = false           // it took one on this bar
+
+// ─────────────────────────  M TOUCH  ────────────────────────────────────
+// Price entering an M object puts that region in play. A later touch on a
+// different one takes its place: the most recent is the one being traded.
+//
+// It lets go when the region stops existing — price absorbs it, or it
+// expires untouched — or when the session turns over. Not when a target is
+// reached: the setup sits above the strategy and cannot see a position.
+// Keeping a second trade from opening while one is live belongs down there.
+
+G_M_SETUP = "Setup · M touch"
+
+enableMSetup = input.bool(true, "Enable the M touch setup", group = G_M_SETUP,
+     tooltip = "Needs M objects to be enabled. With those off this setup can never take a region, and the diagnostics say so.")
+mSetupOpen   = input.int(930,  "Trading hours, from", minval = 0, maxval = 2359, group = G_M_SETUP,
+     tooltip = "New York time, written as HHMM. A touch outside these hours is ignored. The defaults are what the model already calls New York — set them to the hours you actually trade.")
+mSetupClose  = input.int(1700, "Trading hours, to",   minval = 0, maxval = 2359, group = G_M_SETUP)
+
+mSetupReady = enableMSetup and enableM   // what it needs from the model
+
+hhmm(int v) => math.floor(v / 100) * 60 + v % 100
+
+if isNewSession
+    setupObj := na
+
+if array.size(slT) > 0
+    for k = 0 to array.size(slT) - 1
+        sT = array.get(slT, k)
+
+        // Let go of a region that no longer exists.
+        if not na(setupObj)
+            if setupObj.eaten or sT >= setupObj.expire
+                setupObj := na
+
+        if mSetupReady
+            VObject hit = array.get(slTouch, k)
+            if not na(hit)
+                mins = hour(sT, NY_TZ) * 60 + minute(sT, NY_TZ)
+                if mins >= hhmm(mSetupOpen) and mins < hhmm(mSetupClose)
+                    setupObj  := hit
+                    setupTook := true
+
+if not na(setupObj)
+    setupName := "M touch"

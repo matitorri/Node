@@ -43,6 +43,13 @@ plotshape(structChoch and structChDir > 0, "CHoCH up",
 plotshape(structChoch and structChDir < 0, "CHoCH down",
      shape.triangledown, location.abovebar, color = structDnColor, size = size.small)
 
+// ──────────────────────────────  SETUP  ─────────────────────────────────
+// Where a region came into play, so a trade can be read back to the moment
+// the context opened.
+
+plotshape(setupTook, "Setup took a region", shape.square, location.top,
+     color = color.new(color.yellow, 20), size = size.tiny)
+
 // ─────────────────────────────  WARNINGS  ───────────────────────────────
 
 if barstate.islast
@@ -84,7 +91,7 @@ if showDiag and barstate.islast
     diagRow(10, "ID state",     na(idObj) ? "—" : (idObj.frozen ? "touched" : "live") + (idObj.eaten ? " · absorbed" : ""))
     diagRow(11, "structure",    not structOn ? "off" : (structPhase > 0 ? "up" : "down"))
     diagRow(12, "struct levels", not structOn ? "—" : str.tostring(structLow, format.mintick) + " – " + str.tostring(structHigh, format.mintick) + "   " + str.tostring(structPts) + " pts")
-    diagRow(14, "setup",        setupName == "" ? "none" : setupName + (na(setupObj) ? "  no region" : "  holding"))
+    diagRow(14, "setup",        not mSetupReady ? "M touch · needs M objects" : na(setupObj) ? "M touch · idle" : "M touch · holding " + str.tostring(setupObj.bot, format.mintick) + " – " + str.tostring(setupObj.top, format.mintick))
     diagRow(15, "signal",       not signalFired ? "—" : signalDir > 0 ? "fired up" : "fired down")
     diagRow(13, "last CHoCH",   not structOn ? "—" : stamp(structChT) + "  " + (structChDir > 0 ? "to up" : structChDir < 0 ? "to down" : "—") + "   ×" + str.tostring(structChCount))
 
