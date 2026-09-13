@@ -30,6 +30,13 @@ the market; the setup decides what is worth watching; the signal fires;
 the strategy says what to do about it; the portfolio decides how much, and
 whether at all.
 
+## Backtesting
+
+TradingView deep-backtests fifteen days at a time, so a run arrives as a
+pile of exports in `Performance/`. `python3 performance.py` merges them
+into `Performance/trades.csv` and reports what they add up to. See
+[docs/performance.md](docs/performance.md).
+
 ## Documentation
 
 The reasoning lives in [docs/](docs/), one page per layer. Start with
