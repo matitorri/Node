@@ -9,9 +9,10 @@ saw, orders what is left by entry, and recomputes the running figures once.
 
     python3 performance.py [--capital 50000]
 
-Writes Performance/trades.csv, which is then the only place to read the
-backtest from: what it adds up to at the top, every trade below it, and
-nothing derived living anywhere else.
+Writes Performance/trades.xlsx, which is then the only place to read the
+backtest from. Two sheets: the trades, and a page of figures that are
+formulas over them. Nothing in the book is a number somebody typed, so
+correcting a trade corrects everything that was said about it.
 """
 
 import argparse
@@ -20,9 +21,13 @@ import glob
 import os
 from datetime import datetime
 
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DIR = os.path.join(HERE, "Performance")
-OUT = os.path.join(DIR, "trades.csv")
+OUT = os.path.join(DIR, "trades.xlsx")
 HEAD = os.path.join(HERE, "src", "strategy.head.pine")
 
 
@@ -38,11 +43,18 @@ def built_version():
         pass
     return "unknown"
 
-FIELDS = [
-    "n", "side", "entry time", "entry price", "exit time", "exit price",
-    "qty", "net pnl", "commission", "favorable", "adverse", "bars",
-    "cumulative pnl", "equity", "source",
-]
+# What the exports said, and then what follows from it. The second group is
+# formulas: the drawdown and the streak need a running value, and a sheet
+# that shows how they are reached can be argued with.
+GIVEN = ["n", "side", "entry time", "entry price", "exit time", "exit price",
+         "qty", "net pnl", "commission", "favorable", "adverse", "bars",
+         "source"]
+DERIVED = ["cumulative pnl", "equity", "peak", "drawdown", "drawdown %",
+           "losing streak"]
+
+MONEY = "#,##0.00"
+PCT   = "0.00%"
+PCT1  = "0.0%"
 
 
 def num(s):
@@ -106,68 +118,151 @@ def drawdown(equity):
     return worst, pct
 
 
-def summary(trades, capital, windows, label):
-    """Everything derived, in order, as (name, value) pairs. One computation
-    feeds both the file and what is printed, so the two cannot disagree."""
+def trades_sheet(ws, trades, capital_ref):
+    """The exports, ordered, with the running figures written as formulas so
+    the sheet shows how each one is reached."""
+    head = GIVEN + DERIVED
+    ws.append(head)
+    for c in range(1, len(head) + 1):
+        ws.cell(1, c).font = Font(bold=True)
+
+    for i, t in enumerate(trades, 1):
+        r = i + 1
+        ws.append([
+            i, t["side"], t["entry time"], t["entry price"],
+            t["exit time"], t["exit price"], int(t["qty"]),
+            round(t["net pnl"], 2), round(t["commission"], 2),
+            round(t["favorable"], 2), round(t["adverse"], 2),
+            int(t["bars"]), t["source"],
+        ])
+        prev = r - 1
+        first = r == 2
+        ws.cell(r, 14).value = f"=SUM($H$2:H{r})"
+        ws.cell(r, 15).value = f"={capital_ref}+N{r}"
+        # The peak carries forward; on the first row there is nothing behind
+        # it but the account as it started.
+        ws.cell(r, 16).value = (f"=MAX({capital_ref},O{r})" if first
+                                else f"=MAX(P{prev},O{r})")
+        ws.cell(r, 17).value = f"=P{r}-O{r}"
+        ws.cell(r, 18).value = f"=IF(P{r}=0,0,Q{r}/P{r})"
+        ws.cell(r, 19).value = (f"=IF(H{r}<0,1,0)" if first
+                                else f"=IF(H{r}<0,S{prev}+1,0)")
+
+        for c in (3, 5):
+            ws.cell(r, c).number_format = "yyyy-mm-dd hh:mm"
+        for c in (4, 6, 8, 9, 10, 11, 14, 15, 16, 17):
+            ws.cell(r, c).number_format = MONEY
+        ws.cell(r, 18).number_format = PCT
+
+    for c, w in enumerate([5, 7, 17, 12, 17, 12, 6, 11, 12, 11, 11, 7, 46,
+                           15, 12, 12, 11, 11, 14], start=1):
+        ws.column_dimensions[get_column_letter(c)].width = w
+    ws.freeze_panes = "A2"
+
+
+def figures(ws, trades, capital, windows, label):
+    """Every figure a formula over the trades sheet. A row is named once and
+    referred to by name, so a line can be moved without breaking the rest."""
+    last = len(trades) + 1
+    pnl  = f"Trades!$H$2:$H${last}"
+    side = f"Trades!$B$2:$B${last}"
+
+    at = {}
+
+    def ref(name):
+        return f"$B${at[name]}"
+
+    rows = []
+
+    def put(name, value, fmt=None):
+        rows.append((name, value, fmt))
+        if name:
+            at[name] = len(rows) + 1
+
+    put("script", label)
+    put("capital", capital, MONEY)
+    put("windows", windows)
+    put("trades", f"=COUNT({pnl})")
+    put("from", f"=MIN(Trades!$C$2:$C${last})", "yyyy-mm-dd")
+    put("to", f"=MAX(Trades!$E$2:$E${last})", "yyyy-mm-dd")
+    put("", "")
+    put("net", f"=SUM({pnl})", MONEY)
+    put("net %", f"={ref('net')}/{ref('capital')}", PCT)
+    put("gross win", f'=SUMIF({pnl},">0")', MONEY)
+    put("gross loss", f'=-SUMIF({pnl},"<0")', MONEY)
+    put("profit factor",
+        f"=IF({ref('gross loss')}=0,\"\",{ref('gross win')}/{ref('gross loss')})",
+        "0.00")
+    put("", "")
+    put("wins", f'=COUNTIF({pnl},">0")')
+    put("losses", f'=COUNTIF({pnl},"<0")')
+    put("win rate", f"={ref('wins')}/{ref('trades')}", PCT1)
+    put("average win",
+        f"=IF({ref('wins')}=0,\"\",{ref('gross win')}/{ref('wins')})", MONEY)
+    put("average loss",
+        f"=IF({ref('losses')}=0,\"\",-{ref('gross loss')}/{ref('losses')})", MONEY)
+    put("expectancy", f"={ref('net')}/{ref('trades')}", MONEY)
+    put("best", f"=MAX({pnl})", MONEY)
+    put("worst", f"=MIN({pnl})", MONEY)
+    put("", "")
+    put("max drawdown", f"=MAX(Trades!$Q$2:$Q${last})", MONEY)
+    put("max drawdown %", f"=MAX(Trades!$R$2:$R${last})", PCT)
+    put("losing streak", f"=MAX(Trades!$S$2:$S${last})")
+    put("commission", f"=SUM(Trades!$I$2:$I${last})", MONEY)
+    put("", "")
+    for s in ("long", "short"):
+        put(f"{s} trades", f'=COUNTIF({side},"{s}")')
+        put(f"{s} net", f'=SUMIF({side},"{s}",{pnl})', MONEY)
+        put(f"{s} win rate",
+            f'=IF({ref(f"{s} trades")}=0,\"\",'
+            f'COUNTIFS({side},"{s}",{pnl},">0")/{ref(f"{s} trades")})', PCT1)
+
+    ws.append(["metric", "value"])
+    ws.cell(1, 1).font = ws.cell(1, 2).font = Font(bold=True)
+    for name, value, fmt in rows:
+        ws.append([name, value])
+        r = ws.max_row
+        if fmt:
+            ws.cell(r, 2).number_format = fmt
+        ws.cell(r, 2).alignment = Alignment(horizontal="right")
+    ws.column_dimensions["A"].width = 18
+    ws.column_dimensions["B"].width = 20
+    return at
+
+
+def show(trades, capital, windows, label, dupes):
+    """The same figures, computed here, for the terminal. The book is the
+    record; this is only so the run says something on its way past."""
     wins = [t for t in trades if t["net pnl"] > 0]
     losses = [t for t in trades if t["net pnl"] < 0]
-    gross_win = sum(t["net pnl"] for t in wins)
-    gross_loss = -sum(t["net pnl"] for t in losses)
+    gw = sum(t["net pnl"] for t in wins)
+    gl = -sum(t["net pnl"] for t in losses)
     net = sum(t["net pnl"] for t in trades)
-
     equity = [capital]
     for t in trades:
         equity.append(equity[-1] + t["net pnl"])
     dd, ddpct = drawdown(equity)
-
-    streak = worst_streak = 0
+    streak = worst = 0
     for t in trades:
         streak = streak + 1 if t["net pnl"] < 0 else 0
-        worst_streak = max(worst_streak, streak)
+        worst = max(worst, streak)
 
-    rows = [
-        ("script", label),
-        ("capital", f"{capital:.2f}"),
-        ("windows", windows),
-        ("trades", len(trades)),
-        ("from", f"{trades[0]['entry time']:%Y-%m-%d}"),
-        ("to", f"{trades[-1]['exit time']:%Y-%m-%d}"),
-        ("net", f"{net:.2f}"),
-        ("net %", f"{net / capital * 100:.2f}"),
-        ("gross win", f"{gross_win:.2f}"),
-        ("gross loss", f"{gross_loss:.2f}"),
-        ("profit factor", f"{gross_win / gross_loss:.2f}" if gross_loss else ""),
-        ("wins", len(wins)),
-        ("losses", len(losses)),
-        ("win rate %", f"{len(wins) / len(trades) * 100:.1f}"),
-        ("average win", f"{gross_win / len(wins):.2f}" if wins else ""),
-        ("average loss", f"{-gross_loss / len(losses):.2f}" if losses else ""),
-        ("expectancy", f"{net / len(trades):.2f}"),
-        ("best", f"{max(t['net pnl'] for t in trades):.2f}"),
-        ("worst", f"{min(t['net pnl'] for t in trades):.2f}"),
-        ("max drawdown", f"{dd:.2f}"),
-        ("max drawdown %", f"{ddpct:.2f}"),
-        ("losing streak", worst_streak),
-        ("commission", f"{sum(t['commission'] for t in trades):.2f}"),
-    ]
-    for side in ("long", "short"):
-        s = [t for t in trades if t["side"] == side]
-        if s:
-            w = sum(1 for t in s if t["net pnl"] > 0)
-            rows += [
-                (f"{side} trades", len(s)),
-                (f"{side} net", f"{sum(t['net pnl'] for t in s):.2f}"),
-                (f"{side} win rate %", f"{w / len(s) * 100:.1f}"),
-            ]
-    return rows
+    def line(k, v):
+        print(f"  {k:<16} {v}")
 
-
-def show(rows, dupes):
     print()
-    for k, v in rows:
-        print(f"  {k:<18} {v}")
-    if dupes:
-        print(f"\n  {dupes} duplicates dropped")
+    line("script", label)
+    line("trades", f"{len(trades)} over {windows} windows"
+                   + (f", {dupes} duplicates dropped" if dupes else ""))
+    line("from", f"{trades[0]['entry time']:%Y-%m-%d}"
+                 f" to {trades[-1]['exit time']:%Y-%m-%d}")
+    line("net", f"{net:+,.2f}   {net / capital * 100:+.2f}%")
+    line("profit factor", f"{gw / gl:.2f}" if gl else "—")
+    line("win rate", f"{len(wins) / len(trades) * 100:.1f}%"
+                     f"   {len(wins)}W {len(losses)}L")
+    line("expectancy", f"{net / len(trades):+,.2f} per trade")
+    line("max drawdown", f"{dd:,.2f}   {ddpct:.2f}%")
+    line("losing streak", worst)
     print()
 
 
@@ -178,8 +273,7 @@ def main():
                     help="what produced these trades; defaults to what src builds")
     args = ap.parse_args()
 
-    paths = [p for p in glob.glob(os.path.join(DIR, "*.csv"))
-             if os.path.abspath(p) != OUT]
+    paths = [p for p in glob.glob(os.path.join(DIR, "*.csv"))]
     if not paths:
         raise SystemExit(f"no exports in {DIR}")
 
@@ -188,40 +282,19 @@ def main():
         raise SystemExit("the exports hold no completed trade")
 
     windows = len(set(t["source"] for t in trades))
-    rows = summary(trades, args.capital, windows,
-                   args.label or built_version())
+    label = args.label or built_version()
 
-    running = 0.0
-    with open(OUT, "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh)
-        w.writerow(["metric", "value"])
-        w.writerows(rows)
-        w.writerow([])
+    wb = Workbook()
+    perf = wb.active
+    perf.title = "Performance"
+    trd = wb.create_sheet("Trades")
 
-        t = csv.DictWriter(fh, fieldnames=FIELDS)
-        t.writeheader()
-        for i, tr in enumerate(trades, 1):
-            running += tr["net pnl"]
-            t.writerow({
-                "n": i,
-                "side": tr["side"],
-                "entry time": f"{tr['entry time']:%Y-%m-%d %H:%M}",
-                "entry price": tr["entry price"],
-                "exit time": f"{tr['exit time']:%Y-%m-%d %H:%M}",
-                "exit price": tr["exit price"],
-                "qty": int(tr["qty"]),
-                "net pnl": round(tr["net pnl"], 2),
-                "commission": round(tr["commission"], 2),
-                "favorable": round(tr["favorable"], 2),
-                "adverse": round(tr["adverse"], 2),
-                "bars": int(tr["bars"]),
-                "cumulative pnl": round(running, 2),
-                "equity": round(args.capital + running, 2),
-                "source": tr["source"],
-            })
+    at = figures(perf, trades, args.capital, windows, label)
+    trades_sheet(trd, trades, f"Performance!$B${at['capital']}")
+    wb.save(OUT)
 
     print(f"\n{os.path.relpath(OUT, HERE)}  {len(trades)} trades")
-    show(rows, dupes)
+    show(trades, args.capital, windows, label, dupes)
 
 
 if __name__ == "__main__":

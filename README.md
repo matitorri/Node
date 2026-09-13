@@ -34,7 +34,8 @@ whether at all.
 
 TradingView deep-backtests fifteen days at a time, so a run arrives as a
 pile of exports in `Performance/`. `python3 performance.py` merges them
-into `Performance/trades.csv` and reports what they add up to. See
+into `Performance/trades.xlsx` — the trades on one sheet, and a page of
+figures that are formulas over them. Needs `openpyxl`. See
 [docs/performance.md](docs/performance.md).
 
 ## Documentation
