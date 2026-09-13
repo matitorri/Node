@@ -1,3 +1,34 @@
+metric,value
+script,Node - v0.18.0
+capital,50000.00
+windows,10
+trades,16
+from,2026-03-05
+to,2026-09-04
+net,4250.00
+net %,8.50
+gross win,7263.00
+gross loss,3013.00
+profit factor,2.41
+wins,9
+losses,7
+win rate %,56.2
+average win,807.00
+average loss,-430.43
+expectancy,265.62
+best,986.00
+worst,-496.50
+max drawdown,1768.00
+max drawdown %,3.54
+losing streak,3
+commission,64.00
+long trades,10
+long net,3053.00
+long win rate %,60.0
+short trades,6
+short net,1197.00
+short win rate %,50.0
+
 n,side,entry time,entry price,exit time,exit price,qty,net pnl,commission,favorable,adverse,bars,cumulative pnl,equity,source
 1,long,2026-03-05 12:38,25010.75,2026-03-05 14:29,24930.5,3,-485.5,4.0,671.5,-483.5,111,-485.5,49514.5,Node_-_v0.17.1-dev_CME_MINI_MNQ1!_2026-09-13_69c63.csv
 2,short,2026-04-13 10:37,25182.5,2026-04-13 10:49,25239.25,4,-458.0,4.0,178.0,-456.0,12,-943.5,49056.5,Node_-_v0.17.1-dev_CME_MINI_MNQ1!_2026-09-13_58c79.csv
