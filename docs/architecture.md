@@ -99,9 +99,15 @@ See [the drawing pass](v-objects.md#drawing) for what that looks like.
 
 Code and comments are written in English.
 
-Versions follow semver and live in the script title, `Node - v0.16.0`.
+Versions follow semver and live in the script title, `Node - v1.0.0`.
 Work in progress carries `-dev` until a batch is closed; closing one
 tags the commit and publishes a GitHub release.
+
+**1.0.0 is about the implementation, not the edge.** It says this is the
+finished TradingView build of Node: the model, one setup, one signal, one
+strategy and the book, documented, with a record of what it did. It does
+not say the edge is proven, and the sample it rests on could not prove it
+— see [performance](performance.md#the-size-of-the-sample).
 
 Changes are recorded in git, not in the files. There is no changelog
 header in any source.

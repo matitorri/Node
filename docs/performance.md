@@ -52,3 +52,18 @@ is a run that never happened.
 **The trades are the trades of the build that produced them.** The exports
 carry the script's title, so check it against the version you mean to be
 judging.
+
+## The size of the sample
+
+Sixteen trades over six months — one every eleven trading days. On that,
+the profit factor and the win rate mean nothing: two trades move either of
+them across their whole range.
+
+That is not a backlog to be worked through. TradingView deep-backtests
+fifteen days at a time and will not give more, so a sample large enough to
+judge an edge means a different platform, a different execution model and
+a different implementation. Whatever that is, it is not this one.
+
+So the figures in the book are a record of what this build did on the
+history it was given. They are not evidence that it works, and nothing in
+the repository should be read as claiming otherwise.
