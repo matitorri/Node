@@ -100,8 +100,46 @@ See [the drawing pass](v-objects.md#drawing) for what that looks like.
 Code and comments are written in English.
 
 Versions follow semver and live in the script title, `Node - v1.0.0`.
-Work in progress carries `-dev` until a batch is closed; closing one
-tags the commit and publishes a GitHub release.
+Work in progress carries a `-dev` suffix until a batch is closed; closing
+one tags the commit and publishes a GitHub release.
+
+### Numbering a major version that is still being built
+
+Before 1.0.0 the batches could take the MINOR digit — `0.16.0`, `0.17.0`,
+`0.18.0` — because semver leaves `0.y.z` free to change at any time. That
+freedom was spent at 1.0.0. The digits now describe something a bot is
+running, and they do not go backwards.
+
+The same rhythm continues in the prerelease field instead. A batch on the
+`v2` branch is numbered `2.0.0-dev.1`, `2.0.0-dev.2`, and so on: the
+destination stays fixed at what is being built, and the counter says how
+far along it is. Closing a batch tags it and publishes a GitHub release
+marked pre-release, so `v1.0.0` — what production runs — stays the latest.
+
+That ordering is not a convention, it is semver's own:
+
+```
+1.0.0  <  1.0.1  <  2.0.0-dev.1  <  2.0.0-dev.2  <  …  <  2.0.0  <  2.0.1
+└─ production ─┘    └──────── the branch ───────┘     └─ production ─┘
+```
+
+Three rules produce it. MAJOR, MINOR and PATCH are compared as numbers
+first, which puts the whole branch above production. With those equal,
+carrying a prerelease ranks *below* not carrying one, which puts every
+batch below the `2.0.0` they lead to. And two prereleases compare their
+dot-separated identifiers left to right, numeric ones as numbers — which
+is why the counter is a separate identifier after a dot. Written
+`dev-10` it would be one alphanumeric identifier compared as text, and
+`dev-10` would sort below `dev-9`.
+
+Build metadata (`2.0.0+dev.1`) cannot be used for this: semver ignores it
+when ordering, so every batch would rank the same.
+
+The title is never bumped to the final number on the branch. The tag
+marks the close; the title keeps saying `-dev.N` until the merge. This
+leaves one invariant worth relying on: **a hyphen in the title means it
+is not production.** `Node - v2.0.0-dev.3` can only be the development
+layout, `Node - v1.0.0` only the production one.
 
 **1.0.0 is about the implementation, not the edge.** It says this is the
 finished TradingView build of Node: the model, one setup, one signal, one
