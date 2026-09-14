@@ -18,9 +18,11 @@ DIST = Path("dist")
 #   strategy    the model, drawn, plus the trade and the book
 #   audit       the model, and every region it has ever held, kept
 PARTS = {
-    "indicator": ("indicator.head", "model.vobjects", "model.structure",
+    "indicator": ("indicator.head", "model.vobjects", "model.latent",
+                  "model.structure",
                   "setup", "signal", "diagnostics", "output", "indicator.tail"),
-    "strategy":  ("strategy.head", "model.vobjects", "model.structure",
+    "strategy":  ("strategy.head", "model.vobjects", "model.latent",
+                  "model.structure",
                   "setup", "signal", "diagnostics", "output",
                   "strategy", "portfolio"),
     "audit":     ("audit.head", "model.vobjects", "audit.tail"),
