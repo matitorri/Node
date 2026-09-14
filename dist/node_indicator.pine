@@ -688,7 +688,8 @@ swiDies  = input.int(7, "Dies at (daily candles)", minval = 1, group = G_SWI)
 swiLat   = input.int(1, "Latency (daily candles)", minval = 1, group = G_SWI)
 swiZone  = input.float(300, "Zone (points)", minval = 0, group = G_SWI)
 swiDraw  = input.bool(true, "Draw", group = G_SWI)
-swiColor = input.color(color.new(color.teal, 0), "Color", group = G_SWI)
+swiHiColor = input.color(color.new(color.teal, 0), "Color · from a high", group = G_SWI)
+swiLoColor = input.color(color.new(color.aqua, 0), "Color · from a low", group = G_SWI)
 
 // ───────────────────────────────  POS  ──────────────────────────────────
 
@@ -698,7 +699,8 @@ posDies  = input.int(21, "Dies at (daily candles)", minval = 1, group = G_POS)
 posLat   = input.int(1, "Latency (daily candles)", minval = 1, group = G_POS)
 posZone  = input.float(300, "Zone (points)", minval = 0, group = G_POS)
 posDraw  = input.bool(true, "Draw", group = G_POS)
-posColor = input.color(color.new(color.green, 0), "Color", group = G_POS)
+posHiColor = input.color(color.new(color.green, 0), "Color · from a high", group = G_POS)
+posLoColor = input.color(color.new(color.lime, 0), "Color · from a low", group = G_POS)
 
 // ───────────────────────────────  INV  ──────────────────────────────────
 
@@ -709,7 +711,8 @@ invDies  = input.int(1021, "Dies at (daily candles)", minval = 1, group = G_INV,
 invLat   = input.int(21, "Latency (daily candles)", minval = 1, group = G_INV)
 invZone  = input.float(500, "Zone (points)", minval = 0, group = G_INV)
 invDraw  = input.bool(true, "Draw", group = G_INV)
-invColor = input.color(color.new(color.maroon, 0), "Color", group = G_INV)
+invHiColor = input.color(color.new(color.maroon, 0), "Color · from a high", group = G_INV)
+invLoColor = input.color(color.new(color.red, 0), "Color · from a low", group = G_INV)
 
 // ──────────────────────────  THE CLASSES  ───────────────────────────────
 // The blocks above are read from here and nowhere else. Each class declares
@@ -722,7 +725,11 @@ var array<int>    clsDiesAt  = array.from(swiDies, posDies, invDies)
 var array<int>    clsLatency = array.from(swiLat, posLat, invLat)
 var array<float>  clsZonePts = array.from(swiZone, posZone, invZone)
 var array<bool>   clsDraw    = array.from(swiDraw, posDraw, invDraw)
-var array<color>  clsTint    = array.from(swiColor, posColor, invColor)
+var array<color>  clsTintHi  = array.from(swiHiColor, posHiColor, invHiColor)
+var array<color>  clsTintLo  = array.from(swiLoColor, posLoColor, invLoColor)
+
+// The hue is the class, the shade is the side it came from.
+tintOf(int c, int side) => side > 0 ? array.get(clsTintHi, c) : array.get(clsTintLo, c)
 
 // The class is not stored anywhere. It is the band an age falls in, read
 // where it is needed, so nothing can disagree with its own age.
@@ -896,14 +903,14 @@ if barstate.islast
             bool want = showLevels and c >= 0 and array.get(clsDraw, c)
             if want and na(lv.ln)
                 lv.ln := line.new(lv.srcT, lv.px, time, lv.px, xloc = xloc.bar_time,
-                     color = array.get(clsTint, c), width = 1)
+                     color = tintOf(c, lv.side), width = 1)
             if not want and not na(lv.ln)
                 line.delete(lv.ln)
                 lv.ln := na
             if not na(lv.ln)
                 line.set_xy1(lv.ln, lv.srcT, lv.px)
                 line.set_xy2(lv.ln, time, lv.px)
-                line.set_color(lv.ln, array.get(clsTint, c))
+                line.set_color(lv.ln, tintOf(c, lv.side))
                 drawnLevels := drawnLevels + 1
 
     if array.size(latents) > 0
@@ -912,8 +919,8 @@ if barstate.islast
             bool want = array.get(clsDraw, o.cls)
             if want and na(o.bx)
                 o.bx := box.new(o.srcT, o.top, time, o.bot, xloc = xloc.bar_time,
-                     border_color = array.get(clsTint, o.cls),
-                     bgcolor      = color.new(array.get(clsTint, o.cls), 85))
+                     border_color = tintOf(o.cls, o.side),
+                     bgcolor      = color.new(tintOf(o.cls, o.side), 85))
             if not want and not na(o.bx)
                 box.delete(o.bx)
                 o.bx := na

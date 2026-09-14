@@ -112,7 +112,8 @@ day 1021 dies as Inv
 
 Each class is a block of its own, in the code and in the settings: it
 declares where it ends, its latency, its zone, whether it is drawn and in
-what colour — and nothing else knows it by name. Where a class begins is
+what two colours — one for objects left by a high, one for objects left by
+a low, so the hue reads as the class and the shade as the side — and nothing else knows it by name. Where a class begins is
 not among them: it is where the one below it ended. The machine below reads the classes as
 rows and walks them in order, so a fourth class is a block and a row —
 not a path through the logic, and not a line of diagnostics either.
