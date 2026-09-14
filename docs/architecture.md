@@ -111,3 +111,31 @@ not say the edge is proven, and the sample it rests on could not prove it
 
 Changes are recorded in git, not in the files. There is no changelog
 header in any source.
+
+## Branches and layouts
+
+A major version is developed whole, not assembled feature by feature.
+
+`main` is what runs. Every commit on it is a commit that can be pasted
+into TradingView, and it is tagged at each version. The next major
+version is developed on a branch of its own — `v2` — which merges into
+`main` once, when it is finished, and is deleted at the merge. The tag is
+what survives.
+
+Each branch has a TradingView layout to match: **production** carries the
+script built from `main`, **development** the one built from the branch.
+Nothing else is loaded on production. The script title, which carries the
+version and the `-dev` suffix, is the only thing on the chart that says
+which one is open.
+
+Bugs found in production are fixed on `main`, released as a PATCH, pasted
+into the production layout, and then merged from `main` into the branch
+the same day. That direction only. A fix that is not carried across is a
+fix that the next major version silently ships without, and the merge
+at the end will ask about it in a conflict, long after anyone remembers
+the answer.
+
+Promoting a version is a procedure, not a merge: paste the new script
+into the production layout, recreate the alerts against it, and only then
+remove the old ones. Alerts belong to the script they were created from;
+replacing the script does not move them.
