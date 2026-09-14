@@ -23,7 +23,8 @@ QUALIFIED LEVEL
       ▼
 LATENT OBJECT            zone = [high − n, high]
 
-      │  B  — candles it waits for the retest
+      │  candles it stays latent: what is left of its class,
+      │  and never fewer than B
       ▼
   ACTIVE
 ```
@@ -46,8 +47,14 @@ it **replaces** it. The wick's extreme becomes the level, the clock starts
 again, and the old one is discarded. A level is the furthest price that
 held, so when price goes further, that is the level now.
 
-**Latent** means broken and waiting. The object exists, it is drawn, and it
-has `B` candles for the retest to arrive.
+**Latent** means broken and waiting. The object exists, it is drawn, and
+it waits until the level would have reached its class's end — never fewer
+than `B` candles, so a level that breaks late still gets its minimum.
+
+`B` is a floor on the life, not a deadline on the retest. Read the other
+way the bands stop meaning anything the moment a level breaks: every
+object would live the same one or two candles no matter which class it
+came from, and the class would be decoration.
 
 **Retest** means price touched the zone. A wick counts here, because the
 operating timeframe is M1 and there is nothing inside a touch that could
@@ -75,7 +82,7 @@ to any one class: below it a high is only a high.
 |---|---|---|---|
 | timeframe | D1 | D1 | D1 |
 | `C` dies at | 7 | 21 | 1021 |
-| `B` latency, from the break | 1 | 1 | 21 |
+| `B` latency, minimum | 1 | 1 | 21 |
 | `n` zone, in points | 300 | 300 | 500 |
 
 Candles throughout, of the one timeframe; `n` in index points.
@@ -114,7 +121,7 @@ The three classes are one ordered list of boundaries — 3, 7, 21, 1021 —
 and a level never belongs to two of them: it is promoted, not duplicated.
 Only the last death is a death; the others are handovers.
 
-`B` grows with the band for the same reason. A level that held three days
-gets one day for its retest; one that held twenty-one gets twenty-one,
-which is the whole chain below it. The deadline is proportional to what
-the level proved.
+`B` grows with the band for the same reason. A Swi that breaks on its
+last day is owed one more candle; an Inv in the same position is owed
+twenty-one, which is the whole chain below it. The floor is proportional
+to what the level proved.

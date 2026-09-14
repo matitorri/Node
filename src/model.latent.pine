@@ -94,7 +94,7 @@ type Latent
     int   cls    = -1
     int   srcT   = na                   // the candle that left the level
     int   brokeT = na                   // where the wait began
-    int   left   = 0                    // daily candles still owed to the retest
+    int   left   = 0                    // daily candles it is still latent for
     int   endT   = na                   // where it stops projecting
     bool  hit    = false
     box   bx     = na
@@ -163,9 +163,14 @@ if enableLatent and newDaily
                     float n   = array.get(clsZonePts, c)
                     float top = lv.side > 0 ? lv.px : math.min(lv.px + n, lv.inner)
                     float bot = lv.side > 0 ? math.max(lv.px - n, lv.inner) : lv.px
+                    // Latent until its class runs out, and never for less
+                    // than the class's latency: a level that breaks late
+                    // still gets its minimum.
+                    int rest = math.max(array.get(clsDiesAt, c) - lv.age,
+                         array.get(clsLatency, c))
                     array.push(latents, Latent.new(top = top, bot = bot,
                          side = lv.side, cls = c, srcT = lv.srcT,
-                         brokeT = dTime, left = array.get(clsLatency, c)))
+                         brokeT = dTime, left = rest))
                 drop := true
             else if wick
                 // Price went further than what held, so what held is no
