@@ -13,7 +13,7 @@ A level does not become an object the moment a candle leaves it. It has to
 earn the right, and the object that follows has a deadline.
 
 ```
-a closed candle leaves the extreme on its own side
+a closed candle leaves its high (and its low)
 
       │  A  — candles the level must survive unbroken
       ▼
@@ -35,34 +35,17 @@ level yet, so nothing broke.
 
 ## Vocabulary
 
-**Side** is the direction of the candle, `close` against `open`, as it is
-for a [V object](v-objects.md#vocabulary). A bullish candle leaves its
-high, a bearish one its low, and a doji leaves nothing.
-
-Both extremes of every candle were candidates once. The high of a day that
-closed down is not a price anyone defended, though — it is where the fall
-started — and holding it as a level meant retesting places nothing had
-happened at. It also halved a population that grows with every session.
-
-The rule reaches further than it looks. A level pierced by a wick is gone,
-and what replaces it is whatever that candle leaves — so a level reached
-by a candle closing the other way is not replaced at all. That follows
-from the same reasoning: it would be a high left by a bearish day.
-
 **Broken** means a candle closed beyond the level. Not a wick through it —
 a close. The subfamily is break *and retest*, and price has to be on the
 other side for a retest to be a retest.
 
 **Qualified** means the level survived `A` candles unbroken. This is what
-separates a level from any other high: not where it sits, but that it
-held.
+separates a level from any other high: not where it sits, but that it held.
 
 While a level is still qualifying, a wick through it does not break it —
-it **ends** it. A level is the furthest price that held, so when price
-goes further there is nothing left to hold. What stands there afterwards
-is whatever that candle leaves under the side rule, with its clock at
-zero: the same extreme, if the candle closed that way, and nothing if it
-did not.
+it **replaces** it. The wick's extreme becomes the level, the clock starts
+again, and the old one is discarded. A level is the furthest price that
+held, so when price goes further, that is the level now.
 
 **Latent** means broken and waiting. The object exists, it is drawn, and
 it waits until the level would have reached its class's end — never fewer

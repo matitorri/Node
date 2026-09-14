@@ -789,8 +789,8 @@ hasLevel(float px, int side) =>
 // Read any other way it is still forming, and a level would break on a
 // candle that has not finished happening.
 
-[dOpen, dHigh, dLow, dClose, dTime] = request.security(syminfo.tickerid, "D",
-     [open[1], high[1], low[1], close[1], time[1]], lookahead = barmerge.lookahead_on)
+[dHigh, dLow, dClose, dTime] = request.security(syminfo.tickerid, "D",
+     [high[1], low[1], close[1], time[1]], lookahead = barmerge.lookahead_on)
 
 newDaily = not na(dTime) and (na(dTime[1]) or dTime != dTime[1])
 
@@ -844,9 +844,8 @@ if enableLatent and newDaily
                 drop := true
             else if wick
                 // Price went further than what held, so what held is no
-                // longer the level. Whether the extreme it reached becomes
-                // one is the side rule's business, below: reached by a
-                // candle that closed the other way, nothing replaces it.
+                // longer the level. The extreme it reached is, and this
+                // same candle is about to leave it below.
                 drop := true
             else
                 lv.age := lv.age + 1
@@ -857,13 +856,10 @@ if enableLatent and newDaily
                 line.delete(lv.ln)
                 array.remove(levels, i)
 
-    // What the candle leaves behind: the extreme on its own side, and
-    // nothing at all when it has no side. The high of a day that closed
-    // down is not a place anyone defended, only where the fall started.
-    int dSide = dClose > dOpen ? 1 : dClose < dOpen ? -1 : 0
-    if dSide > 0 and not hasLevel(dHigh, 1)
+    // What the candle leaves behind.
+    if not hasLevel(dHigh, 1)
         array.push(levels, Level.new(px = dHigh, side = 1, srcT = dTime, inner = dLow))
-    if dSide < 0 and not hasLevel(dLow, -1)
+    if not hasLevel(dLow, -1)
         array.push(levels, Level.new(px = dLow, side = -1, srcT = dTime, inner = dHigh))
 
     // A retested object is finished. It is kept to be read, not forever.
