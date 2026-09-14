@@ -673,6 +673,8 @@ paint(nyObj)
 G_L = "Objects · Latent objects"
 
 enableLatent = input.bool(true, "Enable latent objects", group = G_L)
+qualifyAt    = input.int(3, "Qualifies at (daily candles)", minval = 1, group = G_L,
+     tooltip = "How long a high or a low must survive unbroken to count as a level at all. Below this it is just a high. Where each class ends is declared by the class itself, and the next one begins there.")
 showLevels   = input.bool(false, "Draw qualified levels", group = G_L,
      tooltip = "The levels that have qualified and are still waiting for a break. Off by default: there are many more of them than there are objects, and Pine draws a bounded number of shapes.")
 keepSpent    = input.int(50, "Retested objects kept", minval = 0, group = G_L,
@@ -682,7 +684,7 @@ keepSpent    = input.int(50, "Retested objects kept", minval = 0, group = G_L,
 
 G_SWI = "Objects · Latent objects · Swi"
 
-swiAt    = input.int(3, "Qualifies at (daily candles)", minval = 1, group = G_SWI)
+swiDies  = input.int(7, "Dies at (daily candles)", minval = 1, group = G_SWI)
 swiLat   = input.int(1, "Latency (daily candles)", minval = 1, group = G_SWI)
 swiZone  = input.float(300, "Zone (points)", minval = 0, group = G_SWI)
 swiDraw  = input.bool(true, "Draw", group = G_SWI)
@@ -692,7 +694,7 @@ swiColor = input.color(color.new(color.teal, 0), "Color", group = G_SWI)
 
 G_POS = "Objects · Latent objects · Pos"
 
-posAt    = input.int(7, "Qualifies at (daily candles)", minval = 1, group = G_POS)
+posDies  = input.int(21, "Dies at (daily candles)", minval = 1, group = G_POS)
 posLat   = input.int(1, "Latency (daily candles)", minval = 1, group = G_POS)
 posZone  = input.float(300, "Zone (points)", minval = 0, group = G_POS)
 posDraw  = input.bool(true, "Draw", group = G_POS)
@@ -702,20 +704,21 @@ posColor = input.color(color.new(color.green, 0), "Color", group = G_POS)
 
 G_INV = "Objects · Latent objects · Inv"
 
-invAt    = input.int(21, "Qualifies at (daily candles)", minval = 1, group = G_INV)
-invLat   = input.int(21, "Latency (daily candles)", minval = 1, group = G_INV)
-invZone  = input.float(500, "Zone (points)", minval = 0, group = G_INV)
 invDies  = input.int(1021, "Dies at (daily candles)", minval = 1, group = G_INV,
      tooltip = "The end of the last band, and so the age at which a level that was never broken is given up on.")
+invLat   = input.int(21, "Latency (daily candles)", minval = 1, group = G_INV)
+invZone  = input.float(500, "Zone (points)", minval = 0, group = G_INV)
 invDraw  = input.bool(true, "Draw", group = G_INV)
 invColor = input.color(color.new(color.maroon, 0), "Color", group = G_INV)
 
 // ──────────────────────────  THE CLASSES  ───────────────────────────────
-// The blocks above are read from here and nowhere else. Ascending order of
-// qualification is what makes the bands consecutive.
+// The blocks above are read from here and nowhere else. Each class declares
+// where it ends and the next one begins there, so a boundary is one number
+// and no two of them can disagree. Ascending order is what makes the bands
+// consecutive.
 
 var array<string> clsLabel   = array.from("Swi", "Pos", "Inv")
-var array<int>    clsQualAt  = array.from(swiAt, posAt, invAt)
+var array<int>    clsDiesAt  = array.from(swiDies, posDies, invDies)
 var array<int>    clsLatency = array.from(swiLat, posLat, invLat)
 var array<float>  clsZonePts = array.from(swiZone, posZone, invZone)
 var array<bool>   clsDraw    = array.from(swiDraw, posDraw, invDraw)
@@ -725,10 +728,14 @@ var array<color>  clsTint    = array.from(swiColor, posColor, invColor)
 // where it is needed, so nothing can disagree with its own age.
 clsOf(int age) =>
     int c = -1
-    for k = 0 to array.size(clsQualAt) - 1
-        if age >= array.get(clsQualAt, k)
-            c := k
+    if age >= qualifyAt
+        for k = 0 to array.size(clsDiesAt) - 1
+            if c < 0 and age < array.get(clsDiesAt, k)
+                c := k
     c
+
+// Past the last band there is nothing left to be promoted to.
+lastDies() => array.get(clsDiesAt, array.size(clsDiesAt) - 1)
 
 clsName(int c) => c < 0 ? "—" : array.get(clsLabel, c)
 
@@ -830,7 +837,7 @@ if enableLatent and newDaily
                 drop := true
             else
                 lv.age := lv.age + 1
-                if lv.age >= invDies
+                if lv.age >= lastDies()
                     drop := true
 
             if drop
