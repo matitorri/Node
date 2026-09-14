@@ -1,3 +1,3 @@
 //@version=6
 
-indicator("Node audit - v1.0.0", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
+indicator("Node audit - v2.0.0-dev", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500)
