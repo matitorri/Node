@@ -13,7 +13,7 @@ A level does not become an object the moment a candle leaves it. It has to
 earn the right, and the object that follows has a deadline.
 
 ```
-a closed candle leaves its high (and its low)
+a closed candle leaves an extreme it extended
 
       │  A  — candles the level must survive unbroken
       ▼
@@ -35,6 +35,16 @@ level yet, so nothing broke.
 
 ## Vocabulary
 
+**Extended** is what makes an extreme a candidate at all. A candle's high
+counts only if it is above the previous candle's high, and its low only if
+it is below the previous candle's low. A day that stayed inside the one
+before it leaves nothing; a day that engulfed it leaves both.
+
+Every extreme of every candle was a candidate once, and that was too many:
+a lower high inside a range is not a level, it is a place the range
+already has one above. What is left after the rule is the price that
+reached furthest before it stopped.
+
 **Broken** means a candle closed beyond the level. Not a wick through it —
 a close. The subfamily is break *and retest*, and price has to be on the
 other side for a retest to be a retest.
@@ -46,6 +56,10 @@ While a level is still qualifying, a wick through it does not break it —
 it **replaces** it. The wick's extreme becomes the level, the clock starts
 again, and the old one is discarded. A level is the furthest price that
 held, so when price goes further, that is the level now.
+
+The replacement is not written anywhere: the candle that pierced the level
+reached past it, so it extended, so it leaves its extreme by the rule
+above. The old level is simply dropped and the new one appears on its own.
 
 **Latent** means broken and waiting. The object exists, it is drawn, and
 it waits until the level would have reached its class's end — never fewer

@@ -789,8 +789,10 @@ hasLevel(float px, int side) =>
 // Read any other way it is still forming, and a level would break on a
 // candle that has not finished happening.
 
-[dHigh, dLow, dClose, dTime] = request.security(syminfo.tickerid, "D",
-     [high[1], low[1], close[1], time[1]], lookahead = barmerge.lookahead_on)
+[dHigh, dLow, dClose, dTime, dPrevHigh, dPrevLow] = request.security(
+     syminfo.tickerid, "D",
+     [high[1], low[1], close[1], time[1], high[2], low[2]],
+     lookahead = barmerge.lookahead_on)
 
 newDaily = not na(dTime) and (na(dTime[1]) or dTime != dTime[1])
 
@@ -856,10 +858,12 @@ if enableLatent and newDaily
                 line.delete(lv.ln)
                 array.remove(levels, i)
 
-    // What the candle leaves behind.
-    if not hasLevel(dHigh, 1)
+    // What the candle leaves behind: only an extreme that took ground the
+    // candle before it had not. A high that stayed under yesterday's is not
+    // a level, it is a lower high inside a range that already has one.
+    if dHigh > dPrevHigh and not hasLevel(dHigh, 1)
         array.push(levels, Level.new(px = dHigh, side = 1, srcT = dTime, inner = dLow))
-    if not hasLevel(dLow, -1)
+    if dLow < dPrevLow and not hasLevel(dLow, -1)
         array.push(levels, Level.new(px = dLow, side = -1, srcT = dTime, inner = dHigh))
 
     // A retested object is finished. It is kept to be read, not forever.
