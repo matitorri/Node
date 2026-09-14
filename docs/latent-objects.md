@@ -68,15 +68,22 @@ level itself is the outer edge.
 
 The same type, the same timeframe, three consecutive bands of maturity:
 
+A level qualifies at `A` = **3**, which belongs to the family rather than
+to any one class: below it a high is only a high.
+
 | | **Swi** | **Pos** | **Inv** |
 |---|---|---|---|
 | timeframe | D1 | D1 | D1 |
-| `A` qualifies at | 3 | 7 | 21 |
-| `C` waits for the break | 4 | 14 | 1000 |
+| `C` dies at | 7 | 21 | 1021 |
 | `B` latency, from the break | 1 | 1 | 21 |
 | `n` zone, in points | 300 | 300 | 500 |
 
 Candles throughout, of the one timeframe; `n` in index points.
+
+`C` is stated as the age at which a class ends rather than as a width,
+because a boundary is one fact and should be one number. Swi dying at 7
+and Pos qualifying at 7 are the same event seen from either side, and
+written twice they would eventually be written differently.
 
 What tells the three apart is not where the level came from but **how long
 it held**. That is the whole difference, and it is measured directly. An
@@ -97,14 +104,15 @@ day 1021 dies as Inv
 ```
 
 Each class is a block of its own, in the code and in the settings: it
-declares its four numbers, whether it is drawn and in what colour, and
-nothing else knows it by name. The machine below reads the classes as
+declares where it ends, its latency, its zone, whether it is drawn and in
+what colour — and nothing else knows it by name. Where a class begins is
+not among them: it is where the one below it ended. The machine below reads the classes as
 rows and walks them in order, so a fourth class is a block and a row —
 not a path through the logic, and not a line of diagnostics either.
 
-So `A` is not an independent parameter. The three classes are one ordered
-list of boundaries — 3, 7, 21, 1021 — and a level never belongs to two of
-them: it is promoted, not duplicated.
+The three classes are one ordered list of boundaries — 3, 7, 21, 1021 —
+and a level never belongs to two of them: it is promoted, not duplicated.
+Only the last death is a death; the others are handovers.
 
 `B` grows with the band for the same reason. A level that held three days
 gets one day for its retest; one that held twenty-one gets twenty-one,
