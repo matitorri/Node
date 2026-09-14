@@ -66,6 +66,15 @@ if showDiag and barstate.islast
             else
                 latWait := latWait + 1
 
+    // Where the latent objects actually are, and what each one came from.
+    // A count cannot say which box on the chart is which.
+    string latList = ""
+    if array.size(latents) > 0
+        for i = 0 to array.size(latents) - 1
+            o = array.get(latents, i)
+            latList := latList + (i > 0 ? "    " : "") + clsName(o.cls) + " " + sided(o.side) + " " + str.tostring(o.bot, format.mintick) + "–" + str.tostring(o.top, format.mintick) + " broke " + stamp(o.brokeT) + (o.hit ? " · retested " + stamp(o.endT) : " · " + str.tostring(o.left) + " left")
+
     diagRow(30, "daily feed",  stamp(dTime))
     diagRow(31, "levels",      not enableLatent ? "off" : lvlList + "   " + str.tostring(array.size(levels)) + " held   " + str.tostring(drawnLevels) + " drawn")
     diagRow(32, "latent",      not enableLatent ? "off" : str.tostring(latWait) + " waiting · " + str.tostring(latHit) + " retested   " + str.tostring(drawnLatent) + " drawn")
+    diagRow(33, "latent list", latList == "" ? "—" : latList)
