@@ -1,38 +1,73 @@
 // ════════════════════════════  LATENT OBJECTS  ══════════════════════════
 // See docs/latent-objects.md.
+//
+// One block per class, then one machine that knows none of them by name.
+// A class is a row of parameters, so a fourth is a block and a row, not a
+// path through the logic.
 
-// ─────────────────────────────  INPUTS  ─────────────────────────────────
+// ─────────────────────────────  FAMILY  ─────────────────────────────────
 
 G_L = "Objects · Latent objects"
 
 enableLatent = input.bool(true, "Enable latent objects", group = G_L)
-
-swiAt  = input.int(3,    "Swi · qualifies at (daily candles)", minval = 1, group = G_L)
-posAt  = input.int(7,    "Pos · qualifies at",                 minval = 1, group = G_L)
-invAt  = input.int(21,   "Inv · qualifies at",                 minval = 1, group = G_L)
-invEnd = input.int(1021, "Inv · dies at",                      minval = 1, group = G_L,
-     tooltip = "A qualified level that is never broken dies here. The four numbers above are one ordered list: each class qualifies where the one below it ends, so a level is promoted rather than held twice.")
-
-swiLat = input.int(1,  "Swi · latency (daily candles)", minval = 1, group = G_L)
-posLat = input.int(1,  "Pos · latency",                 minval = 1, group = G_L)
-invLat = input.int(21, "Inv · latency",                 minval = 1, group = G_L)
-
-swiZone = input.float(300, "Swi · zone (points)", minval = 0, group = G_L)
-posZone = input.float(300, "Pos · zone",          minval = 0, group = G_L)
-invZone = input.float(500, "Inv · zone",          minval = 0, group = G_L,
-     tooltip = "Measured from the broken level inward, into the candle that left it, and stopped by that candle's far side.")
-
-showSwi    = input.bool(true, "Draw Swi", group = G_L)
-showPos    = input.bool(true, "Draw Pos", group = G_L)
-showInv    = input.bool(true, "Draw Inv", group = G_L)
-showLevels = input.bool(false, "Draw qualified levels", group = G_L,
+showLevels   = input.bool(false, "Draw qualified levels", group = G_L,
      tooltip = "The levels that have qualified and are still waiting for a break. Off by default: there are many more of them than there are objects, and Pine draws a bounded number of shapes.")
-keepSpent  = input.int(50, "Retested objects kept", minval = 0, group = G_L,
+keepSpent    = input.int(50, "Retested objects kept", minval = 0, group = G_L,
      tooltip = "A retested object is finished, and stays on the chart to be read. Past this many, the oldest is dropped. The diagnostics report what is alive against what is drawn.")
 
-swiColor = input.color(color.new(color.teal, 0),   "Swi color", group = G_L)
-posColor = input.color(color.new(color.green, 0),  "Pos color", group = G_L)
-invColor = input.color(color.new(color.maroon, 0), "Inv color", group = G_L)
+// ───────────────────────────────  SWI  ──────────────────────────────────
+
+G_SWI = "Objects · Latent objects · Swi"
+
+swiAt    = input.int(3, "Qualifies at (daily candles)", minval = 1, group = G_SWI)
+swiLat   = input.int(1, "Latency (daily candles)", minval = 1, group = G_SWI)
+swiZone  = input.float(300, "Zone (points)", minval = 0, group = G_SWI)
+swiDraw  = input.bool(true, "Draw", group = G_SWI)
+swiColor = input.color(color.new(color.teal, 0), "Color", group = G_SWI)
+
+// ───────────────────────────────  POS  ──────────────────────────────────
+
+G_POS = "Objects · Latent objects · Pos"
+
+posAt    = input.int(7, "Qualifies at (daily candles)", minval = 1, group = G_POS)
+posLat   = input.int(1, "Latency (daily candles)", minval = 1, group = G_POS)
+posZone  = input.float(300, "Zone (points)", minval = 0, group = G_POS)
+posDraw  = input.bool(true, "Draw", group = G_POS)
+posColor = input.color(color.new(color.green, 0), "Color", group = G_POS)
+
+// ───────────────────────────────  INV  ──────────────────────────────────
+
+G_INV = "Objects · Latent objects · Inv"
+
+invAt    = input.int(21, "Qualifies at (daily candles)", minval = 1, group = G_INV)
+invLat   = input.int(21, "Latency (daily candles)", minval = 1, group = G_INV)
+invZone  = input.float(500, "Zone (points)", minval = 0, group = G_INV)
+invDies  = input.int(1021, "Dies at (daily candles)", minval = 1, group = G_INV,
+     tooltip = "The end of the last band, and so the age at which a level that was never broken is given up on.")
+invDraw  = input.bool(true, "Draw", group = G_INV)
+invColor = input.color(color.new(color.maroon, 0), "Color", group = G_INV)
+
+// ──────────────────────────  THE CLASSES  ───────────────────────────────
+// The blocks above are read from here and nowhere else. Ascending order of
+// qualification is what makes the bands consecutive.
+
+var array<string> clsLabel   = array.from("Swi", "Pos", "Inv")
+var array<int>    clsQualAt  = array.from(swiAt, posAt, invAt)
+var array<int>    clsLatency = array.from(swiLat, posLat, invLat)
+var array<float>  clsZonePts = array.from(swiZone, posZone, invZone)
+var array<bool>   clsDraw    = array.from(swiDraw, posDraw, invDraw)
+var array<color>  clsTint    = array.from(swiColor, posColor, invColor)
+
+// The class is not stored anywhere. It is the band an age falls in, read
+// where it is needed, so nothing can disagree with its own age.
+clsOf(int age) =>
+    int c = -1
+    for k = 0 to array.size(clsQualAt) - 1
+        if age >= array.get(clsQualAt, k)
+            c := k
+    c
+
+clsName(int c) => c < 0 ? "—" : array.get(clsLabel, c)
 
 // ──────────────────────────────  TYPES  ─────────────────────────────────
 
@@ -49,7 +84,7 @@ type Latent
     float top    = na
     float bot    = na
     int   side   = 0
-    int   cls    = -1                   // 0 Swi, 1 Pos, 2 Inv
+    int   cls    = -1
     int   srcT   = na                   // the candle that left the level
     int   brokeT = na                   // where the wait began
     int   left   = 0                    // daily candles still owed to the retest
@@ -59,16 +94,6 @@ type Latent
 
 var array<Level>  levels  = array.new<Level>()
 var array<Latent> latents = array.new<Latent>()
-
-// The class is not stored. It is the band the level's age falls in, read
-// wherever it is needed, so no object can disagree with its own age.
-clsOf(int age) => age >= invAt ? 2 : age >= posAt ? 1 : age >= swiAt ? 0 : -1
-
-clsName(int c)  => c == 2 ? "Inv" : c == 1 ? "Pos" : c == 0 ? "Swi" : "—"
-clsColor(int c) => c == 2 ? invColor : c == 1 ? posColor : swiColor
-clsZone(int c)  => c == 2 ? invZone : c == 1 ? posZone : swiZone
-clsLat(int c)   => c == 2 ? invLat : c == 1 ? posLat : swiLat
-clsShown(int c) => c == 2 ? showInv : c == 1 ? showPos : showSwi
 
 // Two candles can leave the same extreme, and the second would otherwise
 // start a level the first is already holding.
@@ -128,12 +153,12 @@ if enableLatent and newDaily
             if broke
                 int c = clsOf(lv.age)
                 if c >= 0
-                    float n   = clsZone(c)
+                    float n   = array.get(clsZonePts, c)
                     float top = lv.side > 0 ? lv.px : math.min(lv.px + n, lv.inner)
                     float bot = lv.side > 0 ? math.max(lv.px - n, lv.inner) : lv.px
                     array.push(latents, Latent.new(top = top, bot = bot,
                          side = lv.side, cls = c, srcT = lv.srcT,
-                         brokeT = dTime, left = clsLat(c)))
+                         brokeT = dTime, left = array.get(clsLatency, c)))
                 drop := true
             else if wick
                 // Price went further than what held, so what held is no
@@ -142,7 +167,7 @@ if enableLatent and newDaily
                 drop := true
             else
                 lv.age := lv.age + 1
-                if lv.age >= invEnd
+                if lv.age >= invDies
                     drop := true
 
             if drop
@@ -193,27 +218,27 @@ if barstate.islast
         for i = 0 to array.size(levels) - 1
             lv = array.get(levels, i)
             int  c    = clsOf(lv.age)
-            bool want = showLevels and c >= 0 and clsShown(c)
+            bool want = showLevels and c >= 0 and array.get(clsDraw, c)
             if want and na(lv.ln)
                 lv.ln := line.new(lv.srcT, lv.px, time, lv.px, xloc = xloc.bar_time,
-                     color = clsColor(c), width = 1)
+                     color = array.get(clsTint, c), width = 1)
             if not want and not na(lv.ln)
                 line.delete(lv.ln)
                 lv.ln := na
             if not na(lv.ln)
                 line.set_xy1(lv.ln, lv.srcT, lv.px)
                 line.set_xy2(lv.ln, time, lv.px)
-                line.set_color(lv.ln, clsColor(c))
+                line.set_color(lv.ln, array.get(clsTint, c))
                 drawnLevels := drawnLevels + 1
 
     if array.size(latents) > 0
         for i = 0 to array.size(latents) - 1
             o = array.get(latents, i)
-            bool want = clsShown(o.cls)
+            bool want = array.get(clsDraw, o.cls)
             if want and na(o.bx)
                 o.bx := box.new(o.srcT, o.top, time, o.bot, xloc = xloc.bar_time,
-                     border_color = clsColor(o.cls),
-                     bgcolor      = color.new(clsColor(o.cls), 85))
+                     border_color = array.get(clsTint, o.cls),
+                     bgcolor      = color.new(array.get(clsTint, o.cls), 85))
             if not want and not na(o.bx)
                 box.delete(o.bx)
                 o.bx := na

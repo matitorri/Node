@@ -96,6 +96,12 @@ day 21   dies as Pos   ·  qualifies as Inv
 day 1021 dies as Inv
 ```
 
+Each class is a block of its own, in the code and in the settings: it
+declares its four numbers, whether it is drawn and in what colour, and
+nothing else knows it by name. The machine below reads the classes as
+rows and walks them in order, so a fourth class is a block and a row —
+not a path through the logic, and not a line of diagnostics either.
+
 So `A` is not an independent parameter. The three classes are one ordered
 list of boundaries — 3, 7, 21, 1021 — and a level never belongs to two of
 them: it is promoted, not duplicated.
